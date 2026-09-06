@@ -70,7 +70,7 @@ export default function DashboardPage() {
         <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 text-white rounded-3xl p-8 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3 bg-white/10 text-[#0BB3FA] border border-white/10">
-              {isPro ? "â˜… Pro Plan Active" : "Free Plan"}
+              {isPro ? "★ Pro Plan Active" : "Free Plan"}
             </div>
             <h1 className="text-3xl font-extrabold font-nunito">Welcome back, {user.displayName || "Creator"}!</h1>
             <p className="text-slate-300 text-sm mt-1 max-w-xl">

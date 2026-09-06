@@ -3,7 +3,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/firebase/authContext";
 
 export const metadata: Metadata = {
-  title: "Vimora â€” Private GPU-Accelerated Bulk Media Converter",
+  title: "Vimora - Private GPU-Accelerated Bulk Media Converter",
   description:
     "Convert, compress, and normalize video and audio files locally on your device using GPU hardware acceleration. No uploads. 100% private. Blazingly fast.",
   keywords: [
