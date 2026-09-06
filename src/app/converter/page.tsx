@@ -418,14 +418,6 @@ export default function ConverterPage() {
           </div>
 
           <div className="flex items-center gap-3 sm:gap-4">
-            {/* GPU Badge */}
-            {gpuCaps && (
-              <div className="hidden md:flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-xl border bg-slate-50 border-slate-200">
-                <Cpu className={`w-3.5 h-3.5 ${gpuCaps.hasGpu ? 'text-[#0B6FFB]' : 'text-slate-400'}`} />
-                <span className="truncate max-w-[160px]">{gpuCaps.displayName}</span>
-              </div>
-            )}
-
             <Link
               href="/dashboard"
               className="text-xs font-bold text-slate-600 hover:text-slate-900 transition-colors"
