@@ -122,6 +122,14 @@ const TESTIMONIALS = [
 ];
 
 export default function HomePage() {
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   return (
     <div className="relative w-full min-h-screen overflow-x-hidden font-sans">
       {/* Background Layer: Smooth Mesh Gradients & Soft Glows (100% Local & Reliable) */}
@@ -135,7 +143,11 @@ export default function HomePage() {
       {/* Content Wrapper */}
       <div className="relative z-10 flex flex-col min-h-screen">
         {/* Navigation */}
-        <nav className="sticky top-0 z-50 w-full bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-xs">
+        <nav
+          className={`sticky top-0 z-50 w-full transition-all duration-300 ${
+            scrolled ? "bg-white/85 backdrop-blur-xl shadow-sm border-b border-slate-900/5" : ""
+          }`}
+        >
           <div className="max-w-7xl mx-auto px-6 md:px-12 py-5 flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2 group">
               <Logo size={32} priority />
@@ -197,7 +209,7 @@ export default function HomePage() {
               <span className="text-[11px] font-normal opacity-70 ml-0.5">v1.0 &bull; Free</span>
             </Link>
             <Link
-              href="/convert"
+              href="/converter"
               className="inline-flex items-center gap-2 bg-white/80 backdrop-blur text-slate-800 text-[15px] font-bold px-7 py-4 rounded-2xl border border-slate-900/10 hover:bg-white shadow transition-all active:scale-95"
             >
               Use in Browser

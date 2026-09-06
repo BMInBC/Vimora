@@ -1,4 +1,4 @@
-export type OutputFormat = 'mp4' | 'webm' | 'mov' | 'mkv' | 'mp3' | 'wav' | 'aac' | 'flac' | 'ogg';
+export type OutputFormat = 'mp4' | 'webm' | 'mov' | 'mp3' | 'wav' | 'aac' | 'flac' | 'ogg';
 
 export type VideoCodec = 'h264' | 'hevc' | 'vp9' | 'av1' | 'copy';
 export type AudioCodec = 'aac' | 'mp3' | 'opus' | 'flac' | 'wav' | 'copy';
@@ -35,34 +35,7 @@ export interface CreatorPreset {
   requiresPro?: boolean;
 }
 
-export type QualityGoal = 'enhance' | 'preserve' | 'reduce';
-
-export interface CompressOptions {
-  mode: 'target_size' | 'percentage' | 'quality';
-  targetSizeMb?: number;
-  reductionPercent?: number; // e.g. 50%
-  qualityLevel?: 'balanced' | 'small' | 'ultra';
-  qualityGoal?: QualityGoal;
-  clarityBoost?: 'subtle' | 'crisp' | 'ultra';
-  enhanceClarity?: boolean;
-  colorPolish?: boolean;
-  denoiseArtifacts?: boolean;
-  downscaleIfLarge?: boolean;
-  outputFormat?: OutputFormat;
-}
-
-export interface EnhanceOptions {
-  upscaleTarget?: 'none' | '1080p' | '4k';
-  denoise?: number; // 0 - 100
-  sharpen?: number; // 0 - 100
-  eqContrast?: number; // 0.5 - 2.0, default 1.0
-  eqBrightness?: number; // -0.5 - 0.5, default 0
-  eqSaturation?: number; // 0 - 3.0, default 1.0
-  normalizeAudio?: boolean;
-}
-
 export interface ConversionOptions {
-  toolType?: 'convert' | 'compress' | 'enhance';
   outputFormat: OutputFormat;
   presetId?: string;
   quality: QualityPreset;
@@ -80,27 +53,6 @@ export interface ConversionOptions {
   maintainAspect?: boolean;
   customOutputName?: string;
   outputDirectory?: string;
-  // Specific tool options
-  compress?: CompressOptions;
-  enhance?: EnhanceOptions;
-  // Video filter options
-  customVideoFilter?: string;
-  autoEnhanceQuality?: boolean;
-}
-
-export interface PreviewRequest {
-  startTimeSeconds?: number;
-  durationSeconds?: number;
-  options: ConversionOptions;
-}
-
-export interface PreviewResult {
-  previewUrl: string;
-  durationSeconds: number;
-  originalSizeBytes?: number;
-  estimatedSizeBytes?: number;
-  originalResolution?: string;
-  outputResolution?: string;
 }
 
 export interface MediaFileInfo {
