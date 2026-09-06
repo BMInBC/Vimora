@@ -11,7 +11,7 @@ export default function Navbar() {
   const { user, isAdmin, isPro, logout } = useAuth();
 
   return (
-    <header className="sticky top-0 z-50 w-full backdrop-blur-md bg-white/70 border-b border-slate-900/5 transition-all">
+    <header className="sticky top-0 z-50 w-full bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-xs">
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2.5 group">
@@ -24,8 +24,8 @@ export default function Navbar() {
         {/* Navigation Links */}
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
           <Link
-            href="/converter"
-            className={`transition-colors hover:text-slate-950 ${pathname === '/converter' ? 'text-slate-950 font-semibold' : ''}`}
+            href="/convert"
+            className={`transition-colors hover:text-slate-950 ${pathname === '/convert' || pathname === '/converter' ? 'text-slate-950 font-semibold' : ''}`}
           >
             Converter
           </Link>

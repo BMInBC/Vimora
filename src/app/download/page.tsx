@@ -11,7 +11,7 @@ export default function DownloadPage() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
       {/* Navigation */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30">
+      <header className="bg-white/80 border-b border-slate-200 static z-30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 group">
             <Logo size={32} priority />
@@ -21,7 +21,7 @@ export default function DownloadPage() {
               <ArrowLeft className="w-4 h-4" /> Back to Home
             </Link>
             <Link
-              href="/converter"
+              href="/convert"
               className="bg-slate-950 hover:bg-slate-800 text-white font-bold px-4 py-2 rounded-xl transition-all shadow-sm"
             >
               Web Converter

@@ -50,7 +50,7 @@ export default function PricingPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30">
+      <header className="bg-white/80 border-b border-slate-200 static z-30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 group">
             <Logo size={32} priority />
@@ -94,7 +94,7 @@ export default function PricingPage() {
             </div>
 
             <Link
-              href="/converter"
+              href="/convert"
               className="mt-8 block text-center bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-3.5 rounded-xl transition-all text-sm"
             >
               Continue with Free
