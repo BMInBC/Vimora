@@ -80,7 +80,7 @@ const STEPS = [
 const PLANS = [
   {
     name: "Free",
-    price: "â‚¦0",
+    price: "₦0",
     period: "forever",
     description: "For individuals trying Vimora out.",
     features: [
@@ -96,7 +96,7 @@ const PLANS = [
   },
   {
     name: "Pro",
-    price: "â‚¦4,500",
+    price: "₦4,500",
     period: "/month",
     description: "For creators and small agencies.",
     features: [

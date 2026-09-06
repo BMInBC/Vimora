@@ -185,7 +185,7 @@ export default function AdminPage() {
           </div>
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Paystack Plan</p>
-            <p className="text-xl font-extrabold mt-1 text-slate-900 font-nunito">â‚¦4,500 / mo</p>
+            <p className="text-xl font-extrabold mt-1 text-slate-900 font-nunito">₦4,500 / mo</p>
           </div>
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Engine Status</p>

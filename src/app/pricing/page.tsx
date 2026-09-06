@@ -82,7 +82,7 @@ export default function PricingPage() {
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Starter</span>
               <h2 className="text-3xl font-bold font-nunito mt-1">Free Tier</h2>
-              <p className="text-3xl font-extrabold mt-4 font-nunito">â‚¦0 <span className="text-sm font-normal text-slate-400">forever</span></p>
+              <p className="text-3xl font-extrabold mt-4 font-nunito">₦0 <span className="text-sm font-normal text-slate-400">forever</span></p>
               <p className="text-slate-500 text-xs mt-2 mb-6">Perfect for occasional single-file conversions.</p>
 
               <ul className="space-y-3 text-sm text-slate-600">
@@ -111,7 +111,7 @@ export default function PricingPage() {
               <span className="text-xs font-bold uppercase tracking-wider text-[#0BB3FA]">Unlimited Power</span>
               <h2 className="text-3xl font-bold font-nunito mt-1">Vimora Pro</h2>
               <p className="text-4xl font-extrabold mt-4 font-nunito">
-                â‚¦4,500 <span className="text-sm font-normal text-slate-400">/ month</span>
+                ₦4,500 <span className="text-sm font-normal text-slate-400">/ month</span>
               </p>
               <p className="text-slate-300 text-xs mt-2 mb-6">Designed for editors, agencies, and video producers.</p>
 
