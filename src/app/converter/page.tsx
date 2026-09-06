@@ -1,10 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '@/lib/firebase/authContext';
 import { CREATOR_PRESETS } from '@/lib/ffmpeg/presets';
 import { detectGpuCapabilities } from '@/lib/ffmpeg/detector';
-import { addLocalHistoryRecord, getAppSettings } from '@/lib/storage/localHistory';
+import {
+  getLocalHistory,
+  addLocalHistoryRecord,
+  deleteLocalHistoryRecord,
+  clearLocalHistory,
+  getAppSettings,
+} from '@/lib/storage/localHistory';
 import { PlatformIcon } from '@/components/PlatformIcon';
 import { Logo } from '@/components/Logo';
 import {
@@ -14,6 +20,7 @@ import {
   GpuCapabilities,
   MediaFileInfo,
   OutputFormat,
+  LocalHistoryRecord,
 } from '@/lib/types';
 import {
   UploadCloud,
@@ -34,6 +41,12 @@ import {
   Download,
   ChevronDown,
   Check,
+  History,
+  Search,
+  HardDrive,
+  RefreshCw,
+  X,
+  FileCheck,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -50,11 +63,22 @@ export default function ConverterPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   
+  // History & Tab navigation state
+  const [history, setHistory] = useState<LocalHistoryRecord[]>([]);
+  const [activeTab, setActiveTab] = useState<'workspace' | 'history'>('workspace');
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyFormatFilter, setHistoryFormatFilter] = useState('all');
+
   // Store raw browser File objects for local upload staging
   const rawFilesRef = useRef<Map<string, File>>(new Map());
 
+  const refreshHistory = () => {
+    setHistory(getLocalHistory());
+  };
+
   useEffect(() => {
     detectGpuCapabilities().then(setGpuCaps);
+    refreshHistory();
     const settings = getAppSettings();
     if (settings.defaultOutputDirectory) {
       setOutputDir(settings.defaultOutputDirectory);
@@ -245,6 +269,7 @@ export default function ConverterPage() {
         durationSeconds: Math.round(data.durationSeconds || 5),
         timestamp: Date.now(),
       });
+      refreshHistory();
     } catch (err: any) {
       console.error('Job error:', err);
       setJobs((prev) =>
@@ -286,26 +311,118 @@ export default function ConverterPage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
+  const formatTimestamp = (ts: number): string => {
+    if (!ts) return 'Just now';
+    const diff = Date.now() - ts;
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    return new Date(ts).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const handleDeleteHistoryItem = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    deleteLocalHistoryRecord(id);
+    refreshHistory();
+  };
+
+  const handleClearHistory = () => {
+    if (window.confirm('Are you sure you want to clear your entire conversion and download history?')) {
+      clearLocalHistory();
+      refreshHistory();
+    }
+  };
+
+  const totalBytesSaved = useMemo(() => {
+    return history.reduce((acc, item) => acc + (item.bytesSaved || 0), 0);
+  }, [history]);
+
+  const gpuConversionsCount = useMemo(() => {
+    return history.filter((item) => item.isGpuAccelerated).length;
+  }, [history]);
+
+  const availableFormats = useMemo(() => {
+    return Array.from(new Set(history.map((h) => h.outputFormat.toLowerCase())));
+  }, [history]);
+
+  const filteredHistory = useMemo(() => {
+    return history.filter((item) => {
+      const searchLower = historySearch.toLowerCase();
+      const matchesSearch =
+        !historySearch ||
+        item.originalFileName.toLowerCase().includes(searchLower) ||
+        item.outputFormat.toLowerCase().includes(searchLower) ||
+        (item.presetUsed && item.presetUsed.toLowerCase().includes(searchLower));
+
+      const matchesFormat =
+        historyFormatFilter === 'all' ||
+        item.outputFormat.toLowerCase() === historyFormatFilter.toLowerCase();
+
+      return matchesSearch && matchesFormat;
+    });
+  }, [history, historySearch, historyFormatFilter]);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-16">
       {/* Top Bar */}
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center gap-2 group">
+          <div className="flex items-center gap-4 sm:gap-6">
+            <Link href="/" className="flex items-center gap-2 group shrink-0">
               <Logo size={30} priority />
             </Link>
-            <span className="text-xs font-semibold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-md border border-slate-200">
-              Workspace
-            </span>
+
+            {/* Segmented Tab Switcher */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setActiveTab('workspace')}
+                className={`flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'workspace'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Sliders className="w-3.5 h-3.5 text-[#0B6FFB]" />
+                <span>Converter</span>
+                {jobs.length > 0 && (
+                  <span className="w-4 h-4 rounded-full bg-[#0B6FFB] text-white text-[10px] flex items-center justify-center font-bold">
+                    {jobs.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('history')}
+                className={`flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'history'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <History className="w-3.5 h-3.5 text-slate-700" />
+                <span>Download History</span>
+                {history.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-800 text-[10px] font-bold">
+                    {history.length}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             {/* GPU Badge */}
             {gpuCaps && (
-              <div className="hidden sm:flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-xl border bg-slate-50 border-slate-200">
+              <div className="hidden md:flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-xl border bg-slate-50 border-slate-200">
                 <Cpu className={`w-3.5 h-3.5 ${gpuCaps.hasGpu ? 'text-[#0B6FFB]' : 'text-slate-400'}`} />
-                <span>{gpuCaps.displayName}</span>
+                <span className="truncate max-w-[160px]">{gpuCaps.displayName}</span>
               </div>
             )}
 
@@ -320,7 +437,9 @@ export default function ConverterPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-6 pt-8 space-y-8">
-        {/* Presets Selector Header */}
+        {activeTab === 'workspace' ? (
+          <>
+            {/* Presets Selector Header */}
         <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm relative">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <div>
@@ -626,7 +745,350 @@ export default function ConverterPage() {
             </div>
           </section>
         )}
-      </main>
+
+        {/* Recent Downloads Preview in Workspace */}
+        {history.length > 0 && (
+          <section className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-[#0B6FFB]/10 text-[#0B6FFB] flex items-center justify-center">
+                  <Download className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold font-nunito text-slate-900">Recent Downloads</h3>
+                  <p className="text-xs text-slate-500">Your latest converted media files ready for download</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab('history')}
+                className="inline-flex items-center gap-1 text-xs font-bold text-[#0B6FFB] hover:text-[#0958cc] transition-colors cursor-pointer"
+              >
+                <span>View full history ({history.length})</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {history.slice(0, 4).map((item) => (
+                <div
+                  key={item.id}
+                  className="py-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:bg-slate-50/70 rounded-2xl px-3 transition-colors"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                    <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
+                      {['mp3', 'wav', 'aac', 'flac', 'ogg'].includes(item.outputFormat) ? (
+                        <FileAudio className="w-4 h-4 text-[#0B6FFB]" />
+                      ) : (
+                        <FileVideo className="w-4 h-4 text-purple-600" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 truncate max-w-sm sm:max-w-md">
+                        {item.originalFileName}
+                      </p>
+                      <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap mt-0.5">
+                        <span className="font-mono uppercase font-bold text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                          {item.outputFormat}
+                        </span>
+                        <span>&bull;</span>
+                        <span>{formatSize(item.outputSizeBytes)}</span>
+                        {item.bytesSaved > 0 && (
+                          <>
+                            <span>&bull;</span>
+                            <span className="text-emerald-600 font-medium">Saved {formatSize(item.bytesSaved)}</span>
+                          </>
+                        )}
+                        <span>&bull;</span>
+                        <span>{formatTimestamp(item.timestamp)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    {item.outputPath && (
+                      <a
+                        href={`/api/download?path=${encodeURIComponent(item.outputPath)}`}
+                        download
+                        className="inline-flex items-center gap-1.5 bg-[#0B6FFB] hover:bg-[#0958cc] text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-all shadow-xs active:scale-95 cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Download
+                      </a>
+                    )}
+                    {item.outputPath && (
+                      <button
+                        type="button"
+                        onClick={() => revealFolder(item.outputPath)}
+                        className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                        title="Reveal in Windows Explorer"
+                      >
+                        <FolderOpen className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </>
+    ) : (
+      /* Full Dedicated Download History View */
+      <div className="space-y-6">
+        {/* Header Banner */}
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3 bg-[#0B6FFB]/10 text-[#0B6FFB] border border-[#0B6FFB]/20">
+              <History className="w-3.5 h-3.5" /> Conversion & Download Archive
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold font-nunito text-slate-900">
+              Download History
+            </h1>
+            <p className="text-slate-500 text-xs sm:text-sm mt-1 max-w-xl">
+              Access and re-download your previously converted files, open their local folders, and inspect storage savings.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {history.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearHistory}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-3.5 py-2.5 rounded-xl transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Clear History
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setActiveTab('workspace')}
+              className="inline-flex items-center gap-1.5 bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow active:scale-95 cursor-pointer"
+            >
+              <Sliders className="w-3.5 h-3.5 text-[#0BB3FA]" />
+              Convert New Files
+            </button>
+          </div>
+        </div>
+
+        {/* KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#0B6FFB] flex items-center justify-center shrink-0">
+              <FileCheck className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Converted</p>
+              <p className="text-2xl font-black font-nunito text-slate-900">{history.length}</p>
+              <p className="text-[11px] text-slate-500">Ready for download</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+              <HardDrive className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Storage Saved</p>
+              <p className="text-2xl font-black font-nunito text-slate-900">{formatSize(totalBytesSaved)}</p>
+              <p className="text-[11px] text-emerald-600 font-medium">Disk space optimized</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
+              <Zap className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">GPU Accelerated</p>
+              <p className="text-2xl font-black font-nunito text-slate-900">{gpuConversionsCount}</p>
+              <p className="text-[11px] text-slate-500">Hardware-encoded files</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Filter & Search Bar */}
+        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search history by file name, preset, or format..."
+              value={historySearch}
+              onChange={(e) => setHistorySearch(e.target.value)}
+              className="w-full pl-10 pr-9 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-[#0B6FFB]/20 focus:border-[#0B6FFB] transition-all"
+            />
+            {historySearch && (
+              <button
+                type="button"
+                onClick={() => setHistorySearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Format Filter Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+            <button
+              type="button"
+              onClick={() => setHistoryFormatFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
+                historyFormatFilter === 'all'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              All ({history.length})
+            </button>
+            {availableFormats.map((fmt) => (
+              <button
+                key={fmt}
+                type="button"
+                onClick={() => setHistoryFormatFilter(fmt)}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold uppercase font-mono tracking-wider transition-all cursor-pointer shrink-0 ${
+                  historyFormatFilter === fmt
+                    ? 'bg-[#0B6FFB] text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {fmt} ({history.filter((h) => h.outputFormat.toLowerCase() === fmt).length})
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* History Items List */}
+        {filteredHistory.length > 0 ? (
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
+            {filteredHistory.map((item) => (
+              <div
+                key={item.id}
+                className="p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 hover:bg-slate-50/70 transition-colors"
+              >
+                <div className="flex items-center gap-4 min-w-0 flex-1">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center shrink-0 border border-slate-200/60 shadow-xs">
+                    {['mp3', 'wav', 'aac', 'flac', 'ogg'].includes(item.outputFormat) ? (
+                      <FileAudio className="w-6 h-6 text-[#0B6FFB]" />
+                    ) : (
+                      <FileVideo className="w-6 h-6 text-purple-600" />
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <p className="text-sm font-bold text-slate-900 truncate max-w-sm md:max-w-md">
+                        {item.originalFileName}
+                      </p>
+                      <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] uppercase bg-slate-100 text-slate-700 border border-slate-200">
+                        {item.outputFormat}
+                      </span>
+                      {item.isGpuAccelerated && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.2 rounded">
+                          <Zap className="w-2.5 h-2.5" /> GPU
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
+                      {item.presetUsed && (
+                        <>
+                          <span className="font-medium text-slate-700">{item.presetUsed}</span>
+                          <span>&bull;</span>
+                        </>
+                      )}
+                      <span>{formatSize(item.outputSizeBytes)}</span>
+                      {item.bytesSaved > 0 && (
+                        <>
+                          <span>&bull;</span>
+                          <span className="text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.2 rounded border border-emerald-200">
+                            Saved {formatSize(item.bytesSaved)}
+                          </span>
+                        </>
+                      )}
+                      <span>&bull;</span>
+                      <span className="text-slate-400 font-mono text-[11px]">{formatTimestamp(item.timestamp)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 w-full md:w-auto justify-between md:justify-end">
+                  {item.outputPath && (
+                    <a
+                      href={`/api/download?path=${encodeURIComponent(item.outputPath)}`}
+                      download
+                      className="inline-flex items-center gap-2 bg-[#0B6FFB] hover:bg-[#0958cc] text-white text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-sm hover:shadow active:scale-95 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Download
+                    </a>
+                  )}
+
+                  {item.outputPath && (
+                    <button
+                      type="button"
+                      onClick={() => revealFolder(item.outputPath)}
+                      className="p-2 text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                      title="Reveal in Windows Explorer"
+                    >
+                      <FolderOpen className="w-4 h-4" />
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={(e) => handleDeleteHistoryItem(item.id, e)}
+                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
+                    title="Delete from History"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-12 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4 text-slate-400">
+              <History className="w-7 h-7" />
+            </div>
+            <h3 className="text-lg font-bold font-nunito text-slate-900 mb-1">
+              {historySearch || historyFormatFilter !== 'all'
+                ? 'No matching files found'
+                : 'Your download history is empty'}
+            </h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto mb-6">
+              {historySearch || historyFormatFilter !== 'all'
+                ? 'Try adjusting your search terms or filter criteria.'
+                : 'Files converted in Vimora will appear here with direct download links and space savings.'}
+            </p>
+            {historySearch || historyFormatFilter !== 'all' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setHistorySearch('');
+                  setHistoryFormatFilter('all');
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0B6FFB] hover:text-[#0958cc] cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Reset Filters
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setActiveTab('workspace')}
+                className="inline-flex items-center gap-2 bg-[#0B6FFB] hover:bg-[#0958cc] text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all shadow active:scale-95 cursor-pointer"
+              >
+                <UploadCloud className="w-4 h-4" /> Convert Files Now
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    )}
+  </main>
     </div>
   );
 }
