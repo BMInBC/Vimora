@@ -298,7 +298,7 @@ export default function ConverterPage() {
       await fetch('/api/open-folder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folderPath }),
+        body: JSON.stringify({ filePath: folderPath, folderPath }),
       });
     } catch {}
   };
