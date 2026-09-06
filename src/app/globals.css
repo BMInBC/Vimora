@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+:root {
+  --font-nunito: 'Nunito', sans-serif;
+  --font-inter: 'Inter', sans-serif;
+}
+
+@theme {
+  --color-cream-50: #FDFBF9;
+  --color-cream-100: #F7F5F2;
+  --color-cream-200: #EAE5DC;
+  --color-sky-100: #Dbeafe;
+  --color-vimora-blue: #0B6FFB;
+  --color-vimora-blue-hover: #0958CC;
+  --color-vimora-cyan: #0BB3FA;
+}
+
+.bg-vimora-blue { background-color: #0B6FFB; }
+.text-vimora-blue { color: #0B6FFB; }
+.border-vimora-blue { border-color: #0B6FFB; }
+
+/* Custom theme color utility fallbacks */
+.bg-cream-50 { background-color: #FDFBF9; }
+.bg-cream-100 { background-color: #F7F5F2; }
+.bg-cream-200 { background-color: #EAE5DC; }
+.via-cream-100 { --tw-gradient-via: #F7F5F2; }
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  }
+
+  /* Hide scrollbar for clean UI */
+  ::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
+  }
+}
+
+.font-nunito {
+  font-family: var(--font-nunito), 'Nunito', sans-serif;
+}
+
+.font-inter {
+  font-family: var(--font-inter), 'Inter', sans-serif;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.8s ease-out forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.8s ease-out forwards;
+}

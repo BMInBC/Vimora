@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if the requester is the authorized Vimora admin
+    function isAdmin() {
+      return request.auth != null && 
+             request.auth.token.email.lower() == 'fawazadekanmbi19@gmail.com';
+    }
+
+    // Helper to check user ownership
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      // Allow user to read and edit their own profile
+      allow read, update: if isOwner(userId) || isAdmin();
+      // Only admin can list all users or alter roles
+      allow list, delete: if isAdmin();
+      // Allow new authenticated user to register their document
+      allow create: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // System Settings & Diagnostics Collection (Admin-only)
+    match /admin/{document=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // Transaction & License Logs
+    match /transactions/{txId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if request.auth != null;
+      allow update, delete: if isAdmin();
+    }
+  }
+}

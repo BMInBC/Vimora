@@ -1,0 +1,21 @@
+[package]
+name = "vimora-desktop"
+version = "1.0.0"
+description = "Vimora - Private GPU-Accelerated Bulk Media Converter"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0", features = [] }
+tauri-plugin-shell = "2.0.0"
+tauri-plugin-dialog = "2.0.0"
+tauri-plugin-fs = "2.0.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
