@@ -347,8 +347,8 @@ export default function HomePage() {
                       </p>
                     </div>
 
-                    <div className="mt-6 pt-4 border-t border-slate-100 flex items-center gap-2 text-xs font-semibold text-black">
-                      <span className="w-2 h-2 rounded-full bg-black animate-pulse" />
+                    <div className="mt-6 pt-4 border-t border-slate-100 flex items-center gap-2 text-xs font-semibold text-[#0B6FFB]">
+                      <span className="w-2 h-2 rounded-full bg-[#0B6FFB] animate-pulse" />
                       Instant Workflow
                     </div>
                   </div>
