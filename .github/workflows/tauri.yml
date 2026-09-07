@@ -44,7 +44,7 @@ jobs:
         run: npm install
 
       - name: Build web application
-        run: npm run build
+        run: npm run build:export
 
       - name: Build Tauri Desktop Application
         uses: tauri-apps/tauri-action@v0
