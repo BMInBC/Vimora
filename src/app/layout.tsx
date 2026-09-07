@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/lib/firebase/authContext";
+import AppShell from "@/components/AppShell";
 
 export const metadata: Metadata = {
   title: "Vimora - Private GPU-Accelerated Bulk Media Converter",
@@ -46,7 +47,9 @@ export default function RootLayout({
 
       </head>
       <body className="antialiased min-h-screen">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <AppShell>{children}</AppShell>
+        </AuthProvider>
       </body>
     </html>
   );

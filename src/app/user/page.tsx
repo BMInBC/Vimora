@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/firebase/authContext";
-import Navbar from "@/components/Navbar";
 import { getLocalHistory, getAppSettings, updateAppSettings } from "@/lib/storage/localHistory";
 import { AppSettings, LocalHistoryRecord, GpuCapabilities } from "@/lib/types";
 import { detectGpuCapabilities } from "@/lib/ffmpeg/detector";
@@ -150,9 +149,8 @@ export default function UserProfilePage() {
   // Not logged in state
   if (!user) {
     return (
-      <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
-        <Navbar />
-        <main className="flex-1 max-w-md mx-auto px-6 py-20 flex flex-col items-center justify-center text-center">
+      <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col items-center justify-center p-6">
+        <main className="max-w-md mx-auto flex flex-col items-center justify-center text-center">
           <div className="w-16 h-16 rounded-2xl bg-blue-50 text-[#0B6FFB] flex items-center justify-center mb-4 border border-blue-200">
             <User className="w-8 h-8" />
           </div>
@@ -185,8 +183,6 @@ export default function UserProfilePage() {
 
   return (
     <div className="min-h-screen bg-slate-50/50 text-slate-900 font-sans flex flex-col">
-      <Navbar />
-
       <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-8 space-y-6">
         {/* Breadcrumb & Quick Actions Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-4">
