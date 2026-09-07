@@ -64,19 +64,23 @@ export default function Navbar() {
         <div className="flex items-center gap-3">
           {user ? (
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-xs uppercase shadow-sm">
+              <Link
+                href="/user"
+                className="flex items-center gap-2 hover:opacity-85 transition-opacity group cursor-pointer"
+                title="View Profile & Settings"
+              >
+                <div className="w-8 h-8 rounded-full bg-[#0B6FFB] text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs group-hover:ring-2 group-hover:ring-[#0B6FFB]/30 transition-all">
                   {user.displayName?.substring(0, 2) || user.email.substring(0, 2)}
                 </div>
                 <div className="hidden lg:flex flex-col text-left">
-                  <span className="text-xs font-semibold text-slate-800 leading-tight">
+                  <span className="text-xs font-semibold text-slate-800 leading-tight group-hover:text-[#0B6FFB] transition-colors">
                     {user.displayName}
                   </span>
-                  <span className="text-[10px] text-slate-500 font-medium capitalize">
+                  <span className="text-[10px] text-[#0B6FFB] font-bold capitalize">
                     {user.plan} Plan
                   </span>
                 </div>
-              </div>
+              </Link>
               <Link
                 href="/settings"
                 className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
