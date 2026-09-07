@@ -13,6 +13,7 @@ import {
 } from '@/lib/storage/localHistory';
 import { PlatformIcon } from '@/components/PlatformIcon';
 import { Logo } from '@/components/Logo';
+import { ConversionChangesPreview } from '@/components/ConversionChangesPreview';
 import {
   ConversionJob,
   ConversionOptions,
@@ -21,6 +22,7 @@ import {
   MediaFileInfo,
   OutputFormat,
   LocalHistoryRecord,
+  AspectRatioMode,
 } from '@/lib/types';
 import {
   UploadCloud,
@@ -51,7 +53,7 @@ import {
 import Link from 'next/link';
 
 export default function ConverterPage() {
-  const { user, isPro } = useAuth();
+  const { user, isPro, loading } = useAuth();
   const [jobs, setJobs] = useState<ConversionJob[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<CreatorPreset>(CREATOR_PRESETS[0]);
   const [selectedFormat, setSelectedFormat] = useState<OutputFormat>('mp4');
@@ -60,6 +62,9 @@ export default function ConverterPage() {
   const [outputDir, setOutputDir] = useState<string>('');
   const [dragActive, setDragActive] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [selectedPreviewIndex, setSelectedPreviewIndex] = useState<number>(0);
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [framingMode, setFramingMode] = useState<AspectRatioMode>('crop_fill');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   
@@ -68,6 +73,23 @@ export default function ConverterPage() {
   const [activeTab, setActiveTab] = useState<'workspace' | 'history'>('workspace');
   const [historySearch, setHistorySearch] = useState('');
   const [historyFormatFilter, setHistoryFormatFilter] = useState('all');
+
+  const handleFramingModeChange = (mode: AspectRatioMode) => {
+    setFramingMode(mode);
+    setJobs((prev) =>
+      prev.map((job) =>
+        job.status === 'queued'
+          ? {
+              ...job,
+              options: {
+                ...job.options,
+                aspectRatioMode: mode,
+              },
+            }
+          : job
+      )
+    );
+  };
 
   // Store raw browser File objects for local upload staging
   const rawFilesRef = useRef<Map<string, File>>(new Map());
@@ -105,6 +127,63 @@ export default function ConverterPage() {
     setSelectedPreset(preset);
     setSelectedFormat(preset.outputFormat);
     setIsDropdownOpen(false);
+
+    const isVertical = preset.resolution && (() => {
+      const p = preset.resolution.split('x');
+      return p.length === 2 && parseInt(p[1], 10) > parseInt(p[0], 10);
+    })();
+    const presetFraming = preset.aspectRatioMode || (isVertical ? 'crop_fill' : 'pad_black');
+    setFramingMode(presetFraming);
+
+    // Update all queued jobs to reflect newly selected preset
+    setJobs((prev) =>
+      prev.map((job) =>
+        job.status === 'queued'
+          ? {
+              ...job,
+              options: {
+                ...job.options,
+                outputFormat: preset.outputFormat,
+                presetId: preset.id,
+                videoCodec: preset.videoCodec,
+                audioCodec: preset.audioCodec,
+                resolution: preset.resolution,
+                fps: preset.fps,
+                videoBitrate: preset.videoBitrate,
+                audioBitrate: preset.audioBitrate,
+                audioSampleRate: preset.audioSampleRate,
+                audioChannels: preset.audioChannels,
+                normalizeAudio: preset.normalizeAudio ?? (['wav', 'mp3', 'flac', 'aac', 'ogg'].includes(preset.outputFormat)),
+                maintainAspect: preset.maintainAspect,
+                aspectRatioMode: presetFraming,
+              },
+            }
+          : job
+      )
+    );
+  };
+
+  const handleFormatSelect = (format: OutputFormat) => {
+    setSelectedFormat(format);
+    const matchingPreset = CREATOR_PRESETS.find((p) => p.outputFormat === format);
+    if (matchingPreset && (!matchingPreset.requiresPro || isPro)) {
+      setSelectedPreset(matchingPreset);
+    }
+
+    setJobs((prev) =>
+      prev.map((job) =>
+        job.status === 'queued'
+          ? {
+              ...job,
+              options: {
+                ...job.options,
+                outputFormat: format,
+                normalizeAudio: ['wav', 'mp3', 'flac', 'aac', 'ogg'].includes(format),
+              },
+            }
+          : job
+      )
+    );
   };
 
   const handleFilesAdded = (files: FileList | null) => {
@@ -140,6 +219,12 @@ export default function ConverterPage() {
         hasAudio: isAudio || isVideo,
       };
 
+      const isVertical = selectedPreset.resolution && (() => {
+        const p = selectedPreset.resolution.split('x');
+        return p.length === 2 && parseInt(p[1], 10) > parseInt(p[0], 10);
+      })();
+      const activeFraming = selectedPreset.aspectRatioMode || (isVertical ? framingMode : 'pad_black');
+
       const options: ConversionOptions = {
         outputFormat: selectedFormat,
         presetId: selectedPreset.id,
@@ -154,6 +239,7 @@ export default function ConverterPage() {
         audioChannels: selectedPreset.audioChannels,
         normalizeAudio: selectedPreset.normalizeAudio ?? (['wav', 'mp3', 'flac', 'aac', 'ogg'].includes(selectedFormat)),
         maintainAspect: selectedPreset.maintainAspect,
+        aspectRatioMode: activeFraming,
         outputDirectory: outputDir,
       };
 
@@ -164,6 +250,56 @@ export default function ConverterPage() {
         status: 'queued',
         progress: { percent: 0 },
       });
+
+      // Asynchronously inspect actual video/audio dimensions and duration in browser
+      if (typeof window !== 'undefined') {
+        const objectUrl = URL.createObjectURL(file);
+        if (isVideo) {
+          const v = document.createElement('video');
+          v.preload = 'metadata';
+          v.src = objectUrl;
+          v.onloadedmetadata = () => {
+            URL.revokeObjectURL(objectUrl);
+            setJobs((curr) =>
+              curr.map((j) =>
+                j.file.id === fileId
+                  ? {
+                      ...j,
+                      file: {
+                        ...j.file,
+                        width: v.videoWidth,
+                        height: v.videoHeight,
+                        durationSeconds: v.duration,
+                      },
+                    }
+                  : j
+              )
+            );
+          };
+          v.onerror = () => URL.revokeObjectURL(objectUrl);
+        } else if (isAudio) {
+          const a = document.createElement('audio');
+          a.preload = 'metadata';
+          a.src = objectUrl;
+          a.onloadedmetadata = () => {
+            URL.revokeObjectURL(objectUrl);
+            setJobs((curr) =>
+              curr.map((j) =>
+                j.file.id === fileId
+                  ? {
+                      ...j,
+                      file: {
+                        ...j.file,
+                        durationSeconds: a.duration,
+                      },
+                    }
+                  : j
+              )
+            );
+          };
+          a.onerror = () => URL.revokeObjectURL(objectUrl);
+        }
+      }
     }
 
     setJobs((prev) => [...prev, ...newJobs]);
@@ -373,9 +509,11 @@ export default function ConverterPage() {
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4 sm:gap-6">
-            <Link href="/" className="flex items-center gap-2 group shrink-0">
-              <Logo size={30} priority />
-            </Link>
+            {!loading && !user && (
+              <Link href="/" className="flex items-center gap-2 group shrink-0">
+                <Logo size={30} priority />
+              </Link>
+            )}
 
             {/* Segmented Tab Switcher */}
             <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
@@ -555,6 +693,79 @@ export default function ConverterPage() {
                 })}
               </div>
             )}
+            {/* Quick Format Selector Pills */}
+            <div className="flex items-center gap-2 mt-4 pt-3.5 border-t border-slate-100 flex-wrap">
+              <span className="text-xs font-bold text-slate-500 shrink-0">Output Format:</span>
+              {(['mp4', 'webm', 'mov', 'mp3', 'wav', 'flac'] as OutputFormat[]).map((fmt) => (
+                <button
+                  key={fmt}
+                  type="button"
+                  onClick={() => handleFormatSelect(fmt)}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold uppercase font-mono transition-all cursor-pointer ${
+                    selectedFormat === fmt
+                      ? 'bg-[#0B6FFB] text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  {fmt}
+                </button>
+              ))}
+            </div>
+
+            {/* 9:16 Vertical Framing Controls */}
+            {selectedPreset.resolution && (() => {
+              const parts = selectedPreset.resolution.split('x');
+              return parts.length === 2 && parseInt(parts[1], 10) > parseInt(parts[0], 10);
+            })() && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 pt-3.5 border-t border-slate-100">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    📱 9:16 Framing:
+                  </span>
+                  <span className="text-[11px] text-slate-500 hidden sm:inline">
+                    Choose how horizontal footage fills vertical TikTok/Reels
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => handleFramingModeChange('crop_fill')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      framingMode === 'crop_fill'
+                        ? 'bg-white text-slate-950 shadow-xs ring-1 ring-slate-200'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Crops extra horizontal edges to fill the 9:16 screen completely with zero black bars"
+                  >
+                    Crop to Fill (0 Black Bars)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleFramingModeChange('blur_pad')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      framingMode === 'blur_pad'
+                        ? 'bg-white text-slate-950 shadow-xs ring-1 ring-slate-200'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Preserves full horizontal width and fills top/bottom with stylish blurred video"
+                  >
+                    ✨ Blurred Background
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleFramingModeChange('pad_black')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      framingMode === 'pad_black'
+                        ? 'bg-white text-slate-950 shadow-xs ring-1 ring-slate-200'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Maintains aspect ratio with classic black letterbox bars"
+                  >
+                    ⬛ Letterbox
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
 
@@ -592,6 +803,42 @@ export default function ConverterPage() {
           </div>
         </section>
 
+        {/* Planned Changes Feature Card for Queued Videos */}
+        {jobs.length > 0 && (
+          <section className="space-y-2">
+            {jobs.length > 1 && (
+              <div className="flex items-center justify-between gap-2 px-1 flex-wrap">
+                <span className="text-xs font-bold text-slate-500">Preview changes for file:</span>
+                <div className="flex items-center gap-1.5 overflow-x-auto py-1 max-w-full">
+                  {jobs.map((j, idx) => (
+                    <button
+                      key={j.id}
+                      type="button"
+                      onClick={() => setSelectedPreviewIndex(idx)}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-all truncate max-w-[180px] cursor-pointer ${
+                        (selectedPreviewIndex >= jobs.length ? 0 : selectedPreviewIndex) === idx
+                          ? 'bg-[#0B6FFB] text-white shadow-xs'
+                          : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {j.file.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <ConversionChangesPreview
+              file={(jobs[selectedPreviewIndex] || jobs[0]).file}
+              options={(jobs[selectedPreviewIndex] || jobs[0]).options}
+              preset={selectedPreset}
+              gpuCaps={gpuCaps}
+              isPro={isPro}
+              variant="card"
+              defaultExpanded={true}
+            />
+          </section>
+        )}
+
         {/* Queue List */}
         {jobs.length > 0 && (
           <section className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
@@ -626,112 +873,158 @@ export default function ConverterPage() {
               {jobs.map((job) => (
                 <div
                   key={job.id}
-                  className="p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 hover:bg-slate-50/80 transition-colors"
+                  className="p-5 flex flex-col hover:bg-slate-50/80 transition-colors"
                 >
-                  <div className="flex items-center gap-4 min-w-0 flex-1">
-                    <div className="shrink-0 drop-shadow-sm">
-                      <PlatformIcon id={job.options.presetId || selectedPreset.id} size={36} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-slate-900 truncate max-w-sm md:max-w-md">
-                        {job.file.name}
-                      </p>
-                      <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5 flex-wrap">
-                        <span>{formatSize(job.file.sizeBytes)}</span>
-                        <span>&bull;</span>
-                        <span className="uppercase font-semibold text-slate-700">
-                          {job.file.format} &rarr; {job.options.outputFormat}
-                        </span>
-                        {job.encoderUsed && (
-                          <>
-                            <span>&bull;</span>
-                            <span className="text-emerald-700 font-medium">{job.encoderUsed}</span>
-                          </>
-                        )}
+                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 w-full">
+                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                      <div className="shrink-0 drop-shadow-sm">
+                        <PlatformIcon id={job.options.presetId || selectedPreset.id} size={36} />
                       </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-                    {job.status === 'converting' && (
-                      <div className="flex items-center gap-3">
-                        <div className="w-32 bg-slate-200 rounded-full h-2 overflow-hidden">
-                          <div
-                            className="bg-[#0B6FFB] h-full rounded-full transition-all duration-300 animate-pulse"
-                            style={{ width: `${job.progress.percent}%` }}
-                          />
-                        </div>
-                        <span className="text-xs font-bold text-slate-700 w-12 text-right">
-                          {job.progress.percent}%
-                        </span>
-                      </div>
-                    )}
-
-                    {job.status === 'completed' && (
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
-                          <CheckCircle2 className="w-4 h-4" />
-                          Saved {formatSize(job.bytesSaved || 0)}
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-slate-900 truncate max-w-sm md:max-w-md">
+                          {job.file.name}
+                        </p>
+                        <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span>{formatSize(job.file.sizeBytes)}</span>
+                          <span>&bull;</span>
+                          <span className="uppercase font-semibold text-slate-700">
+                            {job.file.format} &rarr; {job.options.outputFormat}
+                          </span>
+                          {job.file.width && job.file.height && (
+                            <>
+                              <span>&bull;</span>
+                              <span className="font-mono text-slate-600">{job.file.width}×{job.file.height}</span>
+                            </>
+                          )}
+                          {job.file.durationSeconds && (
+                            <>
+                              <span>&bull;</span>
+                              <span>{Math.round(job.file.durationSeconds)}s</span>
+                            </>
+                          )}
+                          {job.encoderUsed && (
+                            <>
+                              <span>&bull;</span>
+                              <span className="text-emerald-700 font-medium">{job.encoderUsed}</span>
+                            </>
+                          )}
                         </div>
 
-                        {job.downloadUrl && (
-                          <a
-                            href={job.downloadUrl}
-                            download
-                            className="inline-flex items-center gap-1.5 bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl transition-all shadow-sm"
-                          >
-                            <Download className="w-3.5 h-3.5 text-[#0BB3FA]" />
-                            Download
-                          </a>
-                        )}
-
-                        {job.outputPath && (
+                        {/* What Will Change Button */}
+                        {job.status === 'queued' && (
                           <button
-                            onClick={() => revealFolder(job.outputPath)}
-                            className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100"
-                            title="Reveal in Windows Explorer"
+                            type="button"
+                            onClick={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)}
+                            className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#0B6FFB] hover:text-[#0958cc] mt-2 py-0.5 px-2 rounded-lg bg-blue-50/80 hover:bg-blue-100/70 border border-blue-200/60 transition-colors cursor-pointer"
                           >
-                            <FolderOpen className="w-4 h-4" />
+                            <Sparkles className="w-3 h-3" />
+                            <span>{expandedJobId === job.id ? 'Hide Planned Changes' : 'What Will Change'}</span>
+                            <ChevronDown
+                              className={`w-3 h-3 transition-transform duration-200 ${
+                                expandedJobId === job.id ? 'rotate-180' : ''
+                              }`}
+                            />
                           </button>
                         )}
                       </div>
-                    )}
+                    </div>
 
-                    {job.status === 'failed' && (
-                      <div
-                        className="flex items-center gap-1.5 text-xs font-semibold text-red-700 bg-red-50 px-3 py-1.5 rounded-xl border border-red-200 max-w-xs truncate"
-                        title={job.errorMessage}
-                      >
-                        <AlertCircle className="w-4 h-4 shrink-0" />
-                        Failed: {job.errorMessage}
-                      </div>
-                    )}
-
-                    {job.status === 'queued' && (
-                      <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
-                        Ready
-                      </span>
-                    )}
-
-                    <div className="flex items-center gap-1">
-                      {(job.status === 'queued' || job.status === 'failed') && (
-                        <button
-                          onClick={() => runSingleJob(job.id)}
-                          className="p-2 text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-lg transition-colors"
-                          title="Start Conversion"
-                        >
-                          <Play className="w-4 h-4 fill-current" />
-                        </button>
+                    <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+                      {job.status === 'converting' && (
+                        <div className="flex items-center gap-3">
+                          <div className="w-32 bg-slate-200 rounded-full h-2 overflow-hidden">
+                            <div
+                              className="bg-[#0B6FFB] h-full rounded-full transition-all duration-300 animate-pulse"
+                              style={{ width: `${job.progress.percent}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-bold text-slate-700 w-12 text-right">
+                            {job.progress.percent}%
+                          </span>
+                        </div>
                       )}
-                      <button
-                        onClick={() => removeJob(job.id)}
-                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Remove"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+
+                      {job.status === 'completed' && (
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
+                            <CheckCircle2 className="w-4 h-4" />
+                            Saved {formatSize(job.bytesSaved || 0)}
+                          </div>
+
+                          {job.downloadUrl && (
+                            <a
+                              href={job.downloadUrl}
+                              download
+                              className="inline-flex items-center gap-1.5 bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-1.5 rounded-xl transition-all shadow-sm"
+                            >
+                              <Download className="w-3.5 h-3.5 text-[#0BB3FA]" />
+                              Download
+                            </a>
+                          )}
+
+                          {job.outputPath && (
+                            <button
+                              onClick={() => revealFolder(job.outputPath)}
+                              className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100"
+                              title="Reveal in Windows Explorer"
+                            >
+                              <FolderOpen className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {job.status === 'failed' && (
+                        <div
+                          className="flex items-center gap-1.5 text-xs font-semibold text-red-700 bg-red-50 px-3 py-1.5 rounded-xl border border-red-200 max-w-xs truncate"
+                          title={job.errorMessage}
+                        >
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          Failed: {job.errorMessage}
+                        </div>
+                      )}
+
+                      {job.status === 'queued' && (
+                        <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
+                          Ready
+                        </span>
+                      )}
+
+                      <div className="flex items-center gap-1">
+                        {(job.status === 'queued' || job.status === 'failed') && (
+                          <button
+                            onClick={() => runSingleJob(job.id)}
+                            className="p-2 text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-lg transition-colors"
+                            title="Start Conversion"
+                          >
+                            <Play className="w-4 h-4 fill-current" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => removeJob(job.id)}
+                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Remove"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Inline Expanded What Will Change Preview */}
+                  {expandedJobId === job.id && (
+                    <div className="w-full mt-2">
+                      <ConversionChangesPreview
+                        file={job.file}
+                        options={job.options}
+                        preset={selectedPreset}
+                        gpuCaps={gpuCaps}
+                        isPro={isPro}
+                        variant="inline"
+                        defaultExpanded={true}
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -101,7 +101,7 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
                 className="flex flex-col items-center justify-center group cursor-pointer"
                 title="Vimora Home"
               >
-                <Logo size={26} priority />
+                <Logo size={26} priority iconOnly />
                 <span className="text-[11px] font-black font-nunito tracking-tight text-slate-900 group-hover:text-[#0B6FFB] transition-colors mt-1.5 text-center leading-none">
                   Vimora
                 </span>
@@ -418,7 +418,7 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
             <Menu className="w-5 h-5" />
           </button>
           <Link href="/" className="flex items-center gap-2">
-            <Logo size={26} priority />
+            <Logo size={26} priority iconOnly />
             <span className="text-base font-black font-nunito tracking-tight text-slate-900">
               Vimora
             </span>

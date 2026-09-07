@@ -30,10 +30,13 @@ export interface CreatorPreset {
   audioChannels?: 1 | 2;
   fps?: number;
   maintainAspect?: boolean;
+  aspectRatioMode?: AspectRatioMode;
   normalizeAudio?: boolean;
   removeAudio?: boolean;
   requiresPro?: boolean;
 }
+
+export type AspectRatioMode = 'crop_fill' | 'blur_pad' | 'pad_black' | 'stretch';
 
 export interface ConversionOptions {
   outputFormat: OutputFormat;
@@ -51,6 +54,7 @@ export interface ConversionOptions {
   normalizeAudio?: boolean;
   preserveMetadata?: boolean;
   maintainAspect?: boolean;
+  aspectRatioMode?: AspectRatioMode;
   customOutputName?: string;
   outputDirectory?: string;
 }
@@ -100,6 +104,7 @@ export interface ConversionJob {
 
 export interface LocalHistoryRecord {
   id: string;
+  userId?: string;
   originalFileName: string;
   originalSizeBytes: number;
   outputFormat: string;

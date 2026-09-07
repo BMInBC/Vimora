@@ -153,10 +153,14 @@ export default function AdminPage() {
       <header className="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2 group">
-              <Logo size={30} textClassName="font-extrabold text-xl font-nunito text-white" priority />
-            </Link>
-            <span className="text-slate-500">|</span>
+            {!loading && !user && (
+              <>
+                <Link href="/" className="flex items-center gap-2 group">
+                  <Logo size={30} textClassName="font-extrabold text-xl font-nunito text-white" priority />
+                </Link>
+                <span className="text-slate-500">|</span>
+              </>
+            )}
             <span className="font-semibold text-sm text-slate-300">Admin Control</span>
             <span className="text-xs bg-[#0B6FFB]/20 text-[#0BB3FA] font-mono px-2 py-0.5 rounded border border-[#0B6FFB]/30">
               {ADMIN_EMAIL}

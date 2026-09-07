@@ -34,9 +34,11 @@ export default function DashboardPage() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center gap-2 group">
-              <Logo size={32} priority />
-            </Link>
+            {!loading && !user && (
+              <Link href="/" className="flex items-center gap-2 group">
+                <Logo size={32} priority />
+              </Link>
+            )}
             <nav className="hidden md:flex items-center gap-4 text-sm font-medium text-slate-600">
               <Link href="/converter" className="text-slate-900 font-semibold hover:text-black">Converter Workspace</Link>
               <Link href="/download" className="hover:text-slate-900">Desktop App</Link>

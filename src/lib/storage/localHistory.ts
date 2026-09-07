@@ -1,7 +1,14 @@
 import { AppSettings, LocalHistoryRecord } from '../types';
 
-const HISTORY_KEY = 'vimora_conversion_history';
+const DEFAULT_HISTORY_KEY = 'vimora_conversion_history_guest';
 const SETTINGS_KEY = 'vimora_app_settings';
+
+export function getHistoryStorageKey(userId?: string | null): string {
+  if (userId && typeof userId === 'string' && userId.trim()) {
+    return `vimora_conversion_history_${userId.trim()}`;
+  }
+  return DEFAULT_HISTORY_KEY;
+}
 
 export const DEFAULT_SETTINGS: AppSettings = {
   defaultOutputDirectory: '',
@@ -13,10 +20,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   maxConcurrentJobs: 2,
 };
 
-export function getLocalHistory(): LocalHistoryRecord[] {
+export function getLocalHistory(userId?: string | null): LocalHistoryRecord[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = localStorage.getItem(HISTORY_KEY);
+    const key = getHistoryStorageKey(userId);
+    const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : [];
   } catch (err) {
     console.error('Failed reading local history:', err);
@@ -24,35 +32,40 @@ export function getLocalHistory(): LocalHistoryRecord[] {
   }
 }
 
-export function addLocalHistoryRecord(record: LocalHistoryRecord): void {
+export function addLocalHistoryRecord(record: LocalHistoryRecord, userId?: string | null): void {
   if (typeof window === 'undefined') return;
   try {
-    const history = getLocalHistory();
-    history.unshift(record);
+    const targetUserId = userId || record.userId || null;
+    const key = getHistoryStorageKey(targetUserId);
+    const history = getLocalHistory(targetUserId);
+    const enrichedRecord = { ...record, userId: targetUserId || undefined };
+    history.unshift(enrichedRecord);
     // Keep last 250 records
     if (history.length > 250) {
       history.length = 250;
     }
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    localStorage.setItem(key, JSON.stringify(history));
   } catch (err) {
     console.error('Failed saving history record:', err);
   }
 }
 
-export function deleteLocalHistoryRecord(id: string): void {
+export function deleteLocalHistoryRecord(id: string, userId?: string | null): void {
   if (typeof window === 'undefined') return;
   try {
-    const history = getLocalHistory().filter((item) => item.id !== id);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    const key = getHistoryStorageKey(userId);
+    const history = getLocalHistory(userId).filter((item) => item.id !== id);
+    localStorage.setItem(key, JSON.stringify(history));
   } catch (err) {
     console.error('Failed deleting history record:', err);
   }
 }
 
-export function clearLocalHistory(): void {
+export function clearLocalHistory(userId?: string | null): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.removeItem(HISTORY_KEY);
+    const key = getHistoryStorageKey(userId);
+    localStorage.removeItem(key);
   } catch (err) {
     console.error('Failed clearing history:', err);
   }

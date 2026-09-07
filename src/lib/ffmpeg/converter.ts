@@ -73,10 +73,25 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
         const w = parseInt(parts[0], 10);
         const h = parseInt(parts[1], 10);
         if (!isNaN(w) && !isNaN(h)) {
-          if (options.maintainAspect !== false) {
-            args.push('-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`);
-          } else {
+          const isVerticalTarget = h > w;
+          const mode =
+            options.aspectRatioMode ||
+            (isVerticalTarget ? 'crop_fill' : options.maintainAspect !== false ? 'pad_black' : 'stretch');
+
+          if (mode === 'crop_fill') {
+            // Fills frame completely (ideal for vertical TikTok / Reels / Shorts with 0 black bars)
+            args.push('-vf', `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`);
+          } else if (mode === 'blur_pad') {
+            // Fills canvas with stylish blurred video background
+            args.push(
+              '-vf',
+              `split[fg][bg];[bg]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},boxblur=25:5[bgblur];[fg]scale=${w}:${h}:force_original_aspect_ratio=decrease[fgfit];[bgblur][fgfit]overlay=(W-w)/2:(H-h)/2`
+            );
+          } else if (mode === 'stretch' || options.maintainAspect === false) {
             args.push('-vf', `scale=${w}:${h}`);
+          } else {
+            // pad_black: keep aspect ratio and pad with black borders
+            args.push('-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`);
           }
         }
       }

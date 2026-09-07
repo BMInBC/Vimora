@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useAuth } from "@/lib/firebase/authContext";
 import { Logo } from "@/components/Logo";
 import {
   Download, CheckCircle2, Shield, Cpu, Monitor,
@@ -8,14 +9,20 @@ import {
 } from "lucide-react";
 
 export default function DownloadPage() {
+  const { user, loading } = useAuth();
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
       {/* Navigation */}
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <Logo size={32} priority />
-          </Link>
+          {!loading && !user ? (
+            <Link href="/" className="flex items-center gap-2 group">
+              <Logo size={32} priority />
+            </Link>
+          ) : (
+            <div />
+          )}
           <div className="flex items-center gap-4 text-sm font-medium">
             <Link href="/" className="text-slate-600 hover:text-slate-900 flex items-center gap-1">
               <ArrowLeft className="w-4 h-4" /> Back to Home

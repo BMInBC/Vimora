@@ -16,6 +16,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
+  updateUserProfile: (updates: Partial<UserProfile>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -190,12 +191,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  const updateUserProfile = (updates: Partial<UserProfile>) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      const updated = { ...prev, ...updates };
+      try {
+        const raw = localStorage.getItem(SESSION_KEY);
+        const session = raw ? JSON.parse(raw) : {};
+        session.profile = updated;
+        localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+        upsertUserRegistry(updated);
+      } catch {}
+      return updated;
+    });
+  };
+
   const isAdmin = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
   const isPro = user?.plan === 'pro';
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, isAdmin, isPro, register, login, logout, sendPasswordReset, resendVerificationEmail }}
+      value={{
+        user,
+        loading,
+        isAdmin,
+        isPro,
+        register,
+        login,
+        logout,
+        sendPasswordReset,
+        resendVerificationEmail,
+        updateUserProfile,
+      }}
     >
       {children}
     </AuthContext.Provider>

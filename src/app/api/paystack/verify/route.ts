@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     });
 
     const data = await res.json();
-    return NextResponse.json(data);
+    return NextResponse.json(data, { status: res.status });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Verification request failed" }, { status: 500 });
   }

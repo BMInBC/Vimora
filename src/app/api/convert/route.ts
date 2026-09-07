@@ -138,6 +138,7 @@ export async function POST(req: NextRequest) {
     const child = await execFileAsync(ffmpegBin, args, {
       maxBuffer: 20 * 1024 * 1024,
       timeout: 600000, // 10 min
+      signal: req.signal,
     });
 
     const elapsedSeconds = (Date.now() - startTime) / 1000;
@@ -160,11 +161,28 @@ export async function POST(req: NextRequest) {
       stdout: child.stdout?.substring(0, 500),
     });
   } catch (err: any) {
-    // Clean up temporary staging file on failure
+    // Clean up temporary staging file on failure or abort
     if (tempInputPath && fs.existsSync(tempInputPath)) {
       try {
         fs.unlinkSync(tempInputPath);
       } catch {}
+    }
+
+    // If request was aborted by client (pause / cancel), delete partial output
+    if (req.signal.aborted || err.name === 'AbortError') {
+      try {
+        if (outputPath && fs.existsSync(outputPath)) {
+          fs.unlinkSync(outputPath);
+        }
+      } catch {}
+      return NextResponse.json(
+        {
+          success: false,
+          aborted: true,
+          error: 'Conversion paused or cancelled by user.',
+        },
+        { status: 499 }
+      );
     }
 
     console.error('Conversion execution error:', err);

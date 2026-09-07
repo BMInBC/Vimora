@@ -1,9 +1,7 @@
 // Paystack Client Utilities
 
 export const PAYSTACK_PUBLIC_KEY =
-  process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "pk_test_sample_paystack_key";
-export const PAYSTACK_SECRET_KEY =
-  process.env.PAYSTACK_SECRET_KEY || "sk_test_sample_paystack_secret";
+  process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "pk_live_7db85883d4aa91177ae1950dfc5a603c555a2e13";
 
 export interface PaystackInitResponse {
   status: boolean;

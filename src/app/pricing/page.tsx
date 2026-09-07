@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 export default function PricingPage() {
-  const { user } = useAuth();
+  const { user, isPro, loading: authLoading } = useAuth();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -52,9 +52,13 @@ export default function PricingPage() {
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <Logo size={32} priority />
-          </Link>
+          {!authLoading && !user ? (
+            <Link href="/" className="flex items-center gap-2 group">
+              <Logo size={32} priority />
+            </Link>
+          ) : (
+            <div />
+          )}
           <Link href="/dashboard" className="text-sm font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1">
             <ArrowLeft className="w-4 h-4" /> Dashboard
           </Link>
@@ -103,8 +107,8 @@ export default function PricingPage() {
 
           {/* Pro Plan */}
           <div className="bg-slate-950 text-white rounded-3xl p-8 border border-slate-800 shadow-2xl flex flex-col justify-between relative">
-            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#0B6FFB] text-white shadow-md shadow-[#0B6FFB]/25 text-xs font-black px-4 py-1 rounded-full shadow">
-              RECOMMENDED
+            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#0B6FFB] text-white shadow-md shadow-[#0B6FFB]/25 text-xs font-black px-4 py-1 rounded-full">
+              {isPro ? "CURRENT PLAN" : "RECOMMENDED"}
             </div>
 
             <div>
@@ -124,21 +128,37 @@ export default function PricingPage() {
               </ul>
             </div>
 
-            <button
-              onClick={handleCheckout}
-              disabled={loading}
-              className="mt-8 w-full flex items-center justify-center gap-2 bg-[#0B6FFB] hover:bg-[#0958cc] text-white shadow-lg shadow-[#0B6FFB]/25 font-bold py-3.5 rounded-xl transition-all shadow-lg active:scale-95 text-sm"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Initializing Paystack...
-                </>
+            <div>
+              {isPro ? (
+                <Link
+                  href="/converter"
+                  className="mt-8 w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg text-sm"
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Pro Active — Launch Converter
+                </Link>
               ) : (
-                <>
-                  <Sparkles className="w-4 h-4" /> Upgrade with Paystack
-                </>
+                <button
+                  onClick={handleCheckout}
+                  disabled={loading}
+                  className="mt-8 w-full flex items-center justify-center gap-2 bg-[#0B6FFB] hover:bg-[#0958cc] text-white shadow-lg shadow-[#0B6FFB]/25 font-bold py-3.5 rounded-xl transition-all active:scale-95 text-sm cursor-pointer"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Initializing Paystack...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" /> Upgrade with Paystack
+                    </>
+                  )}
+                </button>
               )}
-            </button>
+
+              <p className="text-[11px] text-slate-400 text-center mt-3 flex items-center justify-center gap-1.5">
+                <Shield className="w-3 h-3 text-slate-400" />
+                Secured by Paystack • Cards, Bank Transfer, USSD
+              </p>
+            </div>
           </div>
         </div>
       </main>

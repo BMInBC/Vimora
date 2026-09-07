@@ -43,6 +43,7 @@ export const CREATOR_PRESETS: CreatorPreset[] = [
     audioBitrate: '192k',
     fps: 30,
     maintainAspect: true,
+    aspectRatioMode: 'crop_fill',
     normalizeAudio: true,
   },
   {
@@ -57,6 +58,7 @@ export const CREATOR_PRESETS: CreatorPreset[] = [
     audioBitrate: '192k',
     fps: 30,
     maintainAspect: true,
+    aspectRatioMode: 'crop_fill',
     normalizeAudio: true,
   },
   {
