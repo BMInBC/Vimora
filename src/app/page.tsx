@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import { useAuth } from "@/lib/firebase/authContext";
 import { Logo } from "@/components/Logo";
 import {
   Zap, ChevronRight, Shield, Cpu, Download, Film,
@@ -100,8 +102,20 @@ const PLANS = [
 ];
 
 export default function HomePage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [activeDemoTab, setActiveDemoTab] = useState<"queue" | "terminal">("queue");
+
+  useEffect(() => {
+    if (!authLoading) {
+      if (!user) {
+        router.replace("/login");
+      } else {
+        router.replace("/converter");
+      }
+    }
+  }, [user, authLoading, router]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);

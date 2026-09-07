@@ -12,13 +12,17 @@
     "app":  {
                 "windows":  [
                                 {
+                                    "label": "main",
                                     "title":  "Vimora - Private GPU Media Converter",
+                                    "url":  "login",
                                     "width":  1280,
                                     "height":  860,
                                     "minWidth":  960,
                                     "minHeight":  640,
                                     "resizable":  true,
-                                    "fullscreen":  false
+                                    "fullscreen":  false,
+                                    "center": true,
+                                    "visible": true
                                 }
                             ],
                 "security":  {
