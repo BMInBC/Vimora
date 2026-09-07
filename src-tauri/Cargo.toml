@@ -3,6 +3,7 @@ name = "vimora-desktop"
 version = "1.0.0"
 description = "Vimora - Private GPU-Accelerated Bulk Media Converter"
 edition = "2021"
+build = "build.rs"
 
 [build-dependencies]
 tauri-build = { version = "2.0.0", features = [] }
