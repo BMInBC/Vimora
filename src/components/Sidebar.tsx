@@ -90,48 +90,69 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
       <div>
         <div
           className={`border-b border-slate-200/80 flex items-center transition-all ${
-            collapsed ? "p-3 justify-center flex-col gap-3" : "p-4 justify-between"
+            collapsed ? "p-3 justify-center flex-col gap-2.5" : "p-4 justify-between"
           }`}
         >
-          <Link href="/" className="flex items-center gap-2.5 group shrink-0">
-            <Logo size={28} priority />
-            {!collapsed && (
-              <div className="flex flex-col">
-                <span className="text-base font-black font-nunito tracking-tight text-slate-900 group-hover:text-[#0B6FFB] transition-colors leading-none">
+          {collapsed ? (
+            /* Collapsed Header: Logo on top, 'Vimora' name centered just below, followed by expand button */
+            <div className="flex flex-col items-center justify-center w-full gap-2">
+              <Link
+                href="/"
+                className="flex flex-col items-center justify-center group cursor-pointer"
+                title="Vimora Home"
+              >
+                <Logo size={26} priority />
+                <span className="text-[11px] font-black font-nunito tracking-tight text-slate-900 group-hover:text-[#0B6FFB] transition-colors mt-1.5 text-center leading-none">
                   Vimora
                 </span>
-                <span className="text-[10px] text-slate-400 font-medium tracking-wider uppercase mt-0.5">
-                  Media Suite
-                </span>
-              </div>
-            )}
-          </Link>
+              </Link>
 
-          {/* Desktop Collapse Toggle Button */}
-          <div className="hidden md:flex items-center gap-1.5">
-            {!collapsed && gpuCaps?.hasGpu && (
-              <div
-                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[#0B6FFB] text-[10px] font-bold"
-                title={gpuCaps.displayName}
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer mt-0.5"
+                title="Expand sidebar"
               >
-                <Zap className="w-3 h-3 fill-current shrink-0" />
-                <span className="truncate max-w-[55px]">{gpuCaps.type.toUpperCase()}</span>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={onToggleCollapse}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {collapsed ? (
                 <ChevronRight className="w-4 h-4 text-slate-600" />
-              ) : (
-                <ChevronLeft className="w-4 h-4 text-slate-600" />
-              )}
-            </button>
-          </div>
+              </button>
+            </div>
+          ) : (
+            /* Expanded Header: Logo and name side-by-side with GPU badge and collapse toggle */
+            <>
+              <Link href="/" className="flex items-center gap-2.5 group shrink-0">
+                <Logo size={28} priority />
+                <div className="flex flex-col">
+                  <span className="text-base font-black font-nunito tracking-tight text-slate-900 group-hover:text-[#0B6FFB] transition-colors leading-none">
+                    Vimora
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-medium tracking-wider uppercase mt-0.5">
+                    Media Suite
+                  </span>
+                </div>
+              </Link>
+
+              <div className="hidden md:flex items-center gap-1.5">
+                {gpuCaps?.hasGpu && (
+                  <div
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[#0B6FFB] text-[10px] font-bold"
+                    title={gpuCaps.displayName}
+                  >
+                    <Zap className="w-3 h-3 fill-current shrink-0" />
+                    <span className="truncate max-w-[55px]">{gpuCaps.type.toUpperCase()}</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={onToggleCollapse}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="Collapse sidebar"
+                >
+                  <ChevronLeft className="w-4 h-4 text-slate-600" />
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Navigation Section */}
