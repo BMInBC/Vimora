@@ -19,12 +19,17 @@ import {
   X,
   ShieldAlert,
   ArrowUpRight,
-  CheckCircle2,
-  HardDrive,
+  ChevronLeft,
+  ChevronRight,
   Settings,
 } from "lucide-react";
 
-export default function Sidebar() {
+interface SidebarProps {
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+}
+
+export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isPro, isAdmin, logout } = useAuth();
@@ -79,40 +84,63 @@ export default function Sidebar() {
     return pathname === href;
   };
 
-  const navContent = (
+  const renderNavContent = (collapsed: boolean) => (
     <div className="h-full flex flex-col justify-between bg-white select-none">
       {/* Top Header & Brand */}
       <div>
-        <div className="p-5 border-b border-slate-200/80 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5 group">
+        <div
+          className={`border-b border-slate-200/80 flex items-center transition-all ${
+            collapsed ? "p-3 justify-center flex-col gap-3" : "p-4 justify-between"
+          }`}
+        >
+          <Link href="/" className="flex items-center gap-2.5 group shrink-0">
             <Logo size={28} priority />
-            <div className="flex flex-col">
-              <span className="text-base font-black font-nunito tracking-tight text-slate-900 group-hover:text-[#0B6FFB] transition-colors leading-none">
-                Vimora
-              </span>
-              <span className="text-[10px] text-slate-400 font-medium tracking-wider uppercase mt-0.5">
-                Media Suite
-              </span>
-            </div>
+            {!collapsed && (
+              <div className="flex flex-col">
+                <span className="text-base font-black font-nunito tracking-tight text-slate-900 group-hover:text-[#0B6FFB] transition-colors leading-none">
+                  Vimora
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium tracking-wider uppercase mt-0.5">
+                  Media Suite
+                </span>
+              </div>
+            )}
           </Link>
 
-          {/* Hardware Acceleration Indicator */}
-          <div
-            className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[#0B6FFB] text-[10px] font-bold"
-            title={gpuCaps?.displayName || "Hardware acceleration"}
-          >
-            <Zap className="w-3 h-3 fill-current shrink-0" />
-            <span className="truncate max-w-[65px]">
-              {gpuCaps?.hasGpu ? gpuCaps.type.toUpperCase() : "CPU"}
-            </span>
+          {/* Desktop Collapse Toggle Button */}
+          <div className="hidden md:flex items-center gap-1.5">
+            {!collapsed && gpuCaps?.hasGpu && (
+              <div
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[#0B6FFB] text-[10px] font-bold"
+                title={gpuCaps.displayName}
+              >
+                <Zap className="w-3 h-3 fill-current shrink-0" />
+                <span className="truncate max-w-[55px]">{gpuCaps.type.toUpperCase()}</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {collapsed ? (
+                <ChevronRight className="w-4 h-4 text-slate-600" />
+              ) : (
+                <ChevronLeft className="w-4 h-4 text-slate-600" />
+              )}
+            </button>
           </div>
         </div>
 
         {/* Navigation Section */}
-        <div className="p-3 space-y-1">
-          <p className="px-3 pt-2 pb-1.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-            Workstation
-          </p>
+        <div className="p-2.5 space-y-1">
+          {!collapsed && (
+            <p className="px-3 pt-2 pb-1.5 text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+              Workstation
+            </p>
+          )}
 
           <nav className="space-y-1">
             {NAV_ITEMS.map((item) => {
@@ -120,65 +148,98 @@ export default function Sidebar() {
               const Icon = item.icon;
 
               return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                    active
-                      ? "bg-[#0B6FFB] text-white shadow-sm shadow-[#0B6FFB]/30"
-                      : "text-slate-600 hover:text-slate-950 hover:bg-slate-50 border border-transparent"
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Icon
-                      className={`w-4 h-4 shrink-0 ${
-                        active ? "text-white" : "text-slate-400"
-                      }`}
-                    />
-                    <span className="truncate">{item.name}</span>
-                  </div>
+                <div key={item.name} className="relative group">
+                  <Link
+                    href={item.href}
+                    className={`flex items-center rounded-xl text-xs font-bold transition-all ${
+                      collapsed
+                        ? "justify-center p-2.5"
+                        : "justify-between px-3 py-2.5"
+                    } ${
+                      active
+                        ? "bg-[#0B6FFB] text-white shadow-sm shadow-[#0B6FFB]/30"
+                        : "text-slate-600 hover:text-slate-950 hover:bg-slate-50 border border-transparent"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Icon
+                        className={`shrink-0 ${
+                          active ? "text-white" : "text-slate-400"
+                        } ${collapsed ? "w-5 h-5" : "w-4 h-4"}`}
+                      />
+                      {!collapsed && <span className="truncate">{item.name}</span>}
+                    </div>
 
-                  {item.badge && (
-                    <span
-                      className={`text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.2 rounded-md ${
-                        active
-                          ? "bg-white/25 text-white"
-                          : "bg-blue-50 text-[#0B6FFB] border border-blue-200"
-                      }`}
-                    >
-                      {item.badge}
-                    </span>
+                    {!collapsed && item.badge && (
+                      <span
+                        className={`text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.2 rounded-md ${
+                          active
+                            ? "bg-white/25 text-white"
+                            : "bg-blue-50 text-[#0B6FFB] border border-blue-200"
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </Link>
+
+                  {/* Tooltip on hover when collapsed */}
+                  {collapsed && (
+                    <div className="fixed left-[76px] hidden group-hover:flex z-50 items-center px-2.5 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold whitespace-nowrap shadow-xl">
+                      <span>{item.name}</span>
+                      {item.badge && (
+                        <span className="ml-1.5 text-[9px] font-bold px-1 rounded bg-[#0B6FFB] text-white">
+                          {item.badge}
+                        </span>
+                      )}
+                    </div>
                   )}
-                </Link>
+                </div>
               );
             })}
 
             {isAdmin && (
-              <Link
-                href="/admin"
-                className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                  pathname === "/admin"
-                    ? "bg-red-600 text-white shadow-sm"
-                    : "text-red-600 hover:bg-red-50 border border-transparent"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <ShieldAlert className="w-4 h-4" />
-                  <span>Admin Portal</span>
-                </div>
-                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded-md bg-red-100 text-red-700">
-                  Staff
-                </span>
-              </Link>
+              <div className="relative group">
+                <Link
+                  href="/admin"
+                  className={`flex items-center rounded-xl text-xs font-bold transition-all ${
+                    collapsed
+                      ? "justify-center p-2.5"
+                      : "justify-between px-3 py-2.5"
+                  } ${
+                    pathname === "/admin"
+                      ? "bg-red-600 text-white shadow-sm"
+                      : "text-red-600 hover:bg-red-50 border border-transparent"
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <ShieldAlert
+                      className={`shrink-0 ${collapsed ? "w-5 h-5" : "w-4 h-4"}`}
+                    />
+                    {!collapsed && <span>Admin Portal</span>}
+                  </div>
+                  {!collapsed && (
+                    <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded-md bg-red-100 text-red-700">
+                      Staff
+                    </span>
+                  )}
+                </Link>
+
+                {collapsed && (
+                  <div className="fixed left-[76px] hidden group-hover:flex z-50 items-center px-2.5 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold whitespace-nowrap shadow-xl">
+                    <span>Admin Portal</span>
+                  </div>
+                )}
+              </div>
             )}
           </nav>
         </div>
       </div>
 
       {/* Bottom Section: Plan Status, Upgrade Button, User Card & Log Out */}
-      <div className="p-3 border-t border-slate-200/80 space-y-2.5 bg-slate-50/40">
-        {/* Upgrade Button when applicable (Free Users) */}
-        {!isPro && user && (
+      <div className="p-2.5 border-t border-slate-200/80 space-y-2 bg-slate-50/40">
+        {/* Upgrade Banner for Free Users (Expanded mode) */}
+        {!isPro && user && !collapsed && (
           <div className="p-3 rounded-2xl bg-blue-50/80 border border-blue-200/80 space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className="font-extrabold text-[#0B6FFB] flex items-center gap-1">
@@ -188,7 +249,7 @@ export default function Sidebar() {
               <span className="text-[10px] font-bold text-slate-500">₦4,500/mo</span>
             </div>
             <p className="text-[11px] text-slate-600 leading-tight">
-              Unlock 4K UHD, NVENC GPU acceleration & unlimited batch queue.
+              Unlock 4K UHD, NVENC GPU speed & unlimited batch queue.
             </p>
             <Link
               href="/pricing"
@@ -200,102 +261,139 @@ export default function Sidebar() {
           </div>
         )}
 
-        {/* User Card with Avatar, Email, Plan & Log Out */}
-        {user ? (
-          <div className="p-2.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2">
-            {/* Clickable Profile Summary */}
+        {/* Upgrade Quick Button (Collapsed mode) */}
+        {!isPro && user && collapsed && (
+          <div className="relative group flex justify-center">
             <Link
-              href="/user"
-              className="flex items-center gap-2.5 hover:opacity-85 transition-opacity group"
-              title="Open User Profile & Settings"
+              href="/pricing"
+              className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-[#0B6FFB] hover:bg-[#0B6FFB] hover:text-white flex items-center justify-center transition-all"
+              title="Upgrade to Pro"
             >
-              {/* User Avatar */}
-              <div className="relative shrink-0">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#0B6FFB] to-blue-400 text-white flex items-center justify-center font-black text-xs uppercase shadow-xs">
-                  {user.displayName?.substring(0, 2) || user.email.substring(0, 2)}
-                </div>
-                <div
-                  className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white"
-                  title="Online"
-                />
-              </div>
-
-              {/* Display Name & Email */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-1">
-                  <p className="text-xs font-extrabold text-slate-900 truncate group-hover:text-[#0B6FFB] transition-colors leading-tight">
-                    {user.displayName || "User"}
-                  </p>
-                  <span
-                    className={`text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded shrink-0 ${
-                      isPro
-                        ? "bg-blue-50 text-[#0B6FFB] border border-blue-200"
-                        : "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    {isPro ? "★ Pro" : "Free"}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-500 truncate leading-tight mt-0.5">
-                  {user.email}
-                </p>
-              </div>
+              <Sparkles className="w-4 h-4" />
             </Link>
-
-            {/* User Action Row: Settings & Log Out */}
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
-              <Link
-                href="/user"
-                className="flex items-center gap-1 text-[11px] font-bold text-slate-600 hover:text-[#0B6FFB] transition-colors"
-              >
-                <Settings className="w-3.5 h-3.5" />
-                <span>Account</span>
-              </Link>
-
-              <button
-                type="button"
-                onClick={() => setShowLogoutModal(true)}
-                className="flex items-center gap-1 text-[11px] font-bold text-red-600 hover:text-red-700 transition-colors p-1 -mr-1 rounded hover:bg-red-50 cursor-pointer"
-                title="Log out"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>Log Out</span>
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* Guest / Logged out state */
-          <div className="p-3 rounded-2xl bg-white border border-slate-200/90 space-y-2">
-            <p className="text-xs font-bold text-slate-800">Welcome to Vimora</p>
-            <p className="text-[11px] text-slate-500">Sign in to save your history and manage Pro perks.</p>
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <Link
-                href="/login"
-                className="py-1.5 text-center text-xs font-bold rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700"
-              >
-                Sign In
-              </Link>
-              <Link
-                href="/signup"
-                className="py-1.5 text-center text-xs font-bold rounded-lg bg-[#0B6FFB] text-white hover:bg-blue-600"
-              >
-                Register
-              </Link>
+            <div className="fixed left-[76px] hidden group-hover:flex z-50 items-center px-2.5 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold whitespace-nowrap shadow-xl">
+              <span>Upgrade to Pro (₦4,500/mo)</span>
             </div>
           </div>
         )}
+
+        {/* User Card */}
+        {user ? (
+          <div
+            className={`rounded-2xl bg-white border border-slate-200/90 shadow-2xs ${
+              collapsed ? "p-2 flex flex-col items-center gap-2" : "p-2.5 space-y-2"
+            }`}
+          >
+            {/* Clickable Profile Summary */}
+            <div className="relative group w-full">
+              <Link
+                href="/user"
+                className={`flex items-center gap-2.5 hover:opacity-85 transition-opacity ${
+                  collapsed ? "justify-center" : ""
+                }`}
+                title="Open User Profile & Settings"
+              >
+                {/* User Avatar */}
+                <div className="relative shrink-0">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#0B6FFB] to-blue-400 text-white flex items-center justify-center font-black text-xs uppercase shadow-xs">
+                    {user.displayName?.substring(0, 2) || user.email.substring(0, 2)}
+                  </div>
+                  <div
+                    className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white"
+                    title="Online"
+                  />
+                </div>
+
+                {!collapsed && (
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-xs font-extrabold text-slate-900 truncate group-hover:text-[#0B6FFB] transition-colors leading-tight">
+                        {user.displayName || "User"}
+                      </p>
+                      <span
+                        className={`text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded shrink-0 ${
+                          isPro
+                            ? "bg-blue-50 text-[#0B6FFB] border border-blue-200"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {isPro ? "★ Pro" : "Free"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 truncate leading-tight mt-0.5">
+                      {user.email}
+                    </p>
+                  </div>
+                )}
+              </Link>
+
+              {/* Tooltip on hover when collapsed */}
+              {collapsed && (
+                <div className="fixed left-[76px] hidden group-hover:flex z-50 flex-col px-3 py-2 rounded-xl bg-slate-900 text-white text-xs shadow-xl space-y-1 min-w-[160px]">
+                  <p className="font-bold truncate">{user.displayName || user.email.split("@")[0]}</p>
+                  <p className="text-[10px] text-slate-400 truncate">{user.email}</p>
+                  <div className="pt-1 border-t border-slate-700 flex items-center justify-between text-[10px]">
+                    <span className="text-[#0B6FFB] font-bold">{isPro ? "★ Pro Plan" : "Free Plan"}</span>
+                    <span className="text-slate-400">View Profile →</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Action Row */}
+            {!collapsed ? (
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                <Link
+                  href="/user"
+                  className="flex items-center gap-1 text-[11px] font-bold text-slate-600 hover:text-[#0B6FFB] transition-colors"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  <span>Account</span>
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => setShowLogoutModal(true)}
+                  className="flex items-center gap-1 text-[11px] font-bold text-red-600 hover:text-red-700 transition-colors p-1 -mr-1 rounded hover:bg-red-50 cursor-pointer"
+                  title="Log out"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Log Out</span>
+                </button>
+              </div>
+            ) : (
+              <div className="relative group">
+                <button
+                  type="button"
+                  onClick={() => setShowLogoutModal(true)}
+                  className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                  title="Log out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+                <div className="fixed left-[76px] hidden group-hover:flex z-50 items-center px-2.5 py-1.5 rounded-lg bg-red-900 text-white text-xs font-semibold whitespace-nowrap shadow-xl">
+                  <span>Log Out</span>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
     </div>
   );
 
   return (
     <>
-      {/* Desktop Fixed Left Navigation Bar */}
-      <aside className="hidden md:block fixed top-0 left-0 h-screen w-64 z-40 border-r border-slate-200/90 shadow-2xs">
-        {navContent}
+      {/* Desktop Fixed Left Navigation Bar (Collapsible) */}
+      <aside
+        className={`hidden md:block fixed top-0 left-0 h-screen z-40 border-r border-slate-200/90 shadow-2xs transition-all duration-300 ease-in-out ${
+          isCollapsed ? "w-[72px]" : "w-64"
+        }`}
+      >
+        {renderNavContent(isCollapsed)}
       </aside>
 
-      {/* Mobile Top Header (with hamburger button) */}
+      {/* Mobile Top Header */}
       <div className="md:hidden sticky top-0 z-30 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-2xs">
         <div className="flex items-center gap-2">
           <button
@@ -314,18 +412,11 @@ export default function Sidebar() {
           </Link>
         </div>
 
-        {user ? (
+        {user && (
           <Link href="/user" className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-[#0B6FFB] text-white flex items-center justify-center font-bold text-xs uppercase">
               {user.displayName?.substring(0, 2) || user.email.substring(0, 2)}
             </div>
-          </Link>
-        ) : (
-          <Link
-            href="/login"
-            className="text-xs font-bold px-3 py-1.5 rounded-lg bg-[#0B6FFB] text-white"
-          >
-            Sign In
           </Link>
         )}
       </div>
@@ -338,7 +429,7 @@ export default function Sidebar() {
         />
       )}
 
-      {/* Mobile Slide-Out Drawer */}
+      {/* Mobile Slide-Out Drawer (Always full width expanded) */}
       <aside
         className={`fixed top-0 left-0 h-screen w-72 z-50 bg-white border-r border-slate-200 shadow-2xl md:hidden transition-transform duration-300 ease-in-out ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
@@ -354,7 +445,7 @@ export default function Sidebar() {
             <X className="w-5 h-5" />
           </button>
         </div>
-        {navContent}
+        {renderNavContent(false)}
       </aside>
 
       {/* Logout Confirmation Modal */}
