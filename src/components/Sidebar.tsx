@@ -117,18 +117,10 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
               </button>
             </div>
           ) : (
-            /* Expanded Header: Logo and name side-by-side with GPU badge and collapse toggle */
+            /* Expanded Header: Logo alone with GPU badge and collapse toggle */
             <>
-              <Link href="/" className="flex items-center gap-2.5 group shrink-0">
-                <Logo size={28} priority />
-                <div className="flex flex-col">
-                  <span className="text-base font-black font-nunito tracking-tight text-slate-900 group-hover:text-[#0B6FFB] transition-colors leading-none">
-                    Vimora
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-medium tracking-wider uppercase mt-0.5">
-                    Media Suite
-                  </span>
-                </div>
+              <Link href="/" className="flex items-center group shrink-0" title="Vimora Home">
+                <Logo size={30} priority />
               </Link>
 
               <div className="hidden md:flex items-center gap-1.5">
