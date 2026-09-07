@@ -25,6 +25,7 @@ export function getFfmpegBinary(): string {
 
 export async function POST(req: NextRequest) {
   let tempInputPath: string | null = null;
+  let outputPath = '';
 
   try {
     const contentType = req.headers.get('content-type') || '';
@@ -123,7 +124,7 @@ export async function POST(req: NextRequest) {
     }
 
     const baseName = customFileName || `${parsedInput.name.replace(/_converted$/, '')}_converted`;
-    const outputPath = path.join(outDir, `${baseName}.${options.outputFormat}`);
+    outputPath = path.join(outDir, `${baseName}.${options.outputFormat}`);
 
     // Build safe argument array
     const args = buildSafeFfmpegArgs({

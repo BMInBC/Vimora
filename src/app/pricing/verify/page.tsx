@@ -174,7 +174,7 @@ function VerifyContent() {
 
 export default function VerifyPage() {
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center p-6">
       <Suspense fallback={<div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>}>
         <VerifyContent />
       </Suspense>

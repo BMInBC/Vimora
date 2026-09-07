@@ -6,8 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/lib/firebase/authContext";
 import { Logo } from "@/components/Logo";
 import {
-  Video, HardDrive, ShieldCheck, CreditCard, Key,
-  ExternalLink, LogOut, Download, CheckCircle, ArrowRight
+  Video, ExternalLink, LogOut, Download, ArrowRight
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -22,14 +21,14 @@ export default function DashboardPage() {
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen flex items-center justify-center bg-[#FAF9F6]">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
+    <div className="min-h-screen bg-[#FAF9F6] flex flex-col font-sans text-slate-900">
       {/* Top Navigation */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -57,7 +56,7 @@ export default function DashboardPage() {
             </div>
             <button
               onClick={() => logout()}
-              className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
               title="Sign Out"
             >
               <LogOut className="w-5 h-5" />
@@ -68,102 +67,82 @@ export default function DashboardPage() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-10 space-y-8">
-        {/* Welcome Banner */}
+        {/* Welcome Banner with Plan & Upgrade Option */}
         <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 text-white rounded-3xl p-8 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3 bg-white/10 text-[#0BB3FA] border border-white/10">
-              {isPro ? "★ Pro Plan Active" : "Free Plan"}
-            </div>
             <h1 className="text-3xl font-extrabold font-nunito">Welcome back, {user.displayName || "Creator"}!</h1>
             <p className="text-slate-300 text-sm mt-1 max-w-xl">
               All conversions run directly on your hardware via FFmpeg. Zero uploads, maximum privacy.
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/converter"
-              className="inline-flex items-center gap-2 bg-[#0B6FFB] hover:bg-[#0958cc] text-white shadow-md shadow-[#0B6FFB]/20 font-bold px-6 py-3.5 rounded-xl transition-all shadow-md active:scale-95"
-            >
-              <Video className="w-5 h-5" />
-              Open Converter
-            </Link>
-            <Link
-              href="/download"
-              className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold px-5 py-3.5 rounded-xl transition-all border border-white/15"
-            >
-              <Download className="w-5 h-5" />
-              Desktop App
-            </Link>
+
+          {/* Right Side: Subscription Plan & Upgrade CTA */}
+          <div className="flex flex-col items-start md:items-end justify-center gap-2 shrink-0 self-stretch md:self-auto border-t md:border-t-0 md:border-l border-white/10 pt-4 md:pt-0 md:pl-6">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              {isPro ? "Pro Plan" : "Free Plan"}
+            </span>
+
+            {!isPro ? (
+              <Link
+                href="/pricing"
+                className="px-3.5 py-1.5 rounded-md bg-[#0B6FFB] hover:bg-blue-600 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
+              >
+                <span>Upgrade to Pro</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            ) : (
+              <Link
+                href="/pricing"
+                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition-all border border-white/15"
+              >
+                <span>Manage Plan</span>
+                <ExternalLink className="w-3.5 h-3.5 text-slate-300" />
+              </Link>
+            )}
           </div>
         </div>
 
-        {/* Quick Stats & Subscription Details */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Card 1: Subscription */}
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Subscription</span>
-                <CreditCard className="w-5 h-5 text-slate-400" />
+        {/* Middle of the page: Open Converter and Desktop App options */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <Link
+            href="/converter"
+            className="group p-6 sm:p-7 rounded-3xl bg-white border border-slate-200 hover:border-[#0B6FFB] shadow-xs hover:shadow-md transition-all flex items-center justify-between"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-blue-50 text-[#0B6FFB] group-hover:bg-[#0B6FFB] group-hover:text-white transition-colors flex items-center justify-center shrink-0 shadow-2xs">
+                <Video className="w-7 h-7" />
               </div>
-              <h3 className="text-2xl font-bold text-slate-900">{isPro ? "Vimora Pro" : "Free Tier"}</h3>
-              <p className="text-sm text-slate-500 mt-1">
-                {isPro
-                  ? "Unlimited GPU conversions, 4K/8K presets & batch queues."
-                  : "Up to 5 conversions/day, 720p output, CPU encoding."}
-              </p>
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900 font-nunito group-hover:text-[#0B6FFB] transition-colors">
+                  Open Converter
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Launch the web workstation to batch convert video and audio files privately.
+                </p>
+              </div>
             </div>
-            <div className="mt-6 pt-4 border-t border-slate-100">
-              {isPro ? (
-                <div className="flex items-center gap-2 text-emerald-600 font-semibold text-sm">
-                  <ShieldCheck className="w-4 h-4" /> Lifetime Pro Active
-                </div>
-              ) : (
-                <Link
-                  href="/pricing"
-                  className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-900 hover:text-[#0B6FFB] transition-colors"
-                >
-                  Upgrade via Paystack <ArrowRight className="w-4 h-4" />
-                </Link>
-              )}
-            </div>
-          </div>
+            <ArrowRight className="w-5 h-5 text-slate-400 group-hover:text-[#0B6FFB] group-hover:translate-x-1 transition-all shrink-0 ml-3" />
+          </Link>
 
-          {/* Card 2: Privacy Status */}
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Security</span>
-                <HardDrive className="w-5 h-5 text-slate-400" />
+          <Link
+            href="/download"
+            className="group p-6 sm:p-7 rounded-3xl bg-white border border-slate-200 hover:border-slate-400 shadow-xs hover:shadow-md transition-all flex items-center justify-between"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-700 group-hover:bg-slate-900 group-hover:text-white transition-colors flex items-center justify-center shrink-0 shadow-2xs">
+                <Download className="w-7 h-7" />
               </div>
-              <h3 className="text-2xl font-bold text-slate-900">Local Processing</h3>
-              <p className="text-sm text-slate-500 mt-1">
-                Zero file uploads. Media stays on your hard drive, processed by your local FFmpeg installation.
-              </p>
-            </div>
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center gap-2 text-slate-600 text-sm">
-              <CheckCircle className="w-4 h-4 text-emerald-500" /> Zero cloud footprint
-            </div>
-          </div>
-
-          {/* Card 3: License Key */}
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Desktop License</span>
-                <Key className="w-5 h-5 text-slate-400" />
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900 font-nunito">
+                  Desktop App
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Download the native offline desktop application for Windows hardware speed.
+                </p>
               </div>
-              <h3 className="text-2xl font-bold text-slate-900">{isPro ? "VIM-PRO-78X2" : "Community Key"}</h3>
-              <p className="text-sm text-slate-500 mt-1">
-                Use this key in the Tauri Windows application to unlock all native features.
-              </p>
             </div>
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-700">
-                {isPro ? "VIM-PRO-78X2-ACTIVATED" : "VIM-COMMUNITY-FREE"}
-              </span>
-            </div>
-          </div>
+            <ArrowRight className="w-5 h-5 text-slate-400 group-hover:text-slate-900 group-hover:translate-x-1 transition-all shrink-0 ml-3" />
+          </Link>
         </div>
 
         {/* Feature Overview Checklist */}

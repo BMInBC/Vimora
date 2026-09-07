@@ -29,6 +29,7 @@ import {
   FileVideo,
   FileAudio,
   Play,
+  Pause,
   Trash2,
   FolderOpen,
   Zap,
@@ -36,7 +37,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock,
-  Sparkles,
   Sliders,
   Lock,
   ArrowRight,
@@ -62,7 +62,6 @@ export default function ConverterPage() {
   const [outputDir, setOutputDir] = useState<string>('');
   const [dragActive, setDragActive] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [selectedPreviewIndex, setSelectedPreviewIndex] = useState<number>(0);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [framingMode, setFramingMode] = useState<AspectRatioMode>('crop_fill');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -93,9 +92,34 @@ export default function ConverterPage() {
 
   // Store raw browser File objects for local upload staging
   const rawFilesRef = useRef<Map<string, File>>(new Map());
+  // Store active AbortControllers for pausible jobs
+  const activeControllersRef = useRef<Map<string, AbortController>>(new Map());
 
   const refreshHistory = () => {
-    setHistory(getLocalHistory());
+    setHistory(getLocalHistory(user?.uid));
+  };
+
+  useEffect(() => {
+    refreshHistory();
+  }, [user?.uid]);
+
+  const pauseJob = (jobId: string) => {
+    const controller = activeControllersRef.current.get(jobId);
+    if (controller) {
+      controller.abort();
+      activeControllersRef.current.delete(jobId);
+    }
+    setJobs((prev) =>
+      prev.map((j) =>
+        j.id === jobId
+          ? {
+              ...j,
+              status: 'paused',
+              progress: { ...j.progress, percent: 0, speed: undefined },
+            }
+          : j
+      )
+    );
   };
 
   useEffect(() => {
@@ -332,10 +356,14 @@ export default function ConverterPage() {
     const job = jobs.find((j) => j.id === jobId);
     if (!job) return;
 
+    // Register an active AbortController so user can pause this individual conversion
+    const controller = new AbortController();
+    activeControllersRef.current.set(jobId, controller);
+
     setJobs((prev) =>
       prev.map((j) =>
         j.id === jobId
-          ? { ...j, status: 'converting', progress: { percent: 15, speed: '2.0x' }, startedAt: Date.now() }
+          ? { ...j, status: 'converting', progress: { percent: 15, speed: '2.0x' }, startedAt: Date.now(), errorMessage: undefined }
           : j
       )
     );
@@ -355,6 +383,7 @@ export default function ConverterPage() {
         res = await fetch('/api/convert', {
           method: 'POST',
           body: formData,
+          signal: controller.signal,
         });
       } else {
         // Desktop / absolute path mode
@@ -366,12 +395,16 @@ export default function ConverterPage() {
             outputDirectory: job.options.outputDirectory || undefined,
             options: job.options,
           }),
+          signal: controller.signal,
         });
       }
 
       const data = await res.json();
 
       if (!res.ok || !data.success) {
+        if (data.aborted || controller.signal.aborted) {
+          return; // Handled by pauseJob
+        }
         throw new Error(data.error || 'Conversion failed');
       }
 
@@ -392,6 +425,7 @@ export default function ConverterPage() {
 
       addLocalHistoryRecord({
         id: completedJob.id,
+        userId: user?.uid,
         originalFileName: completedJob.file.name,
         originalSizeBytes: completedJob.file.sizeBytes,
         outputFormat: completedJob.options.outputFormat,
@@ -404,9 +438,18 @@ export default function ConverterPage() {
         status: 'completed',
         durationSeconds: Math.round(data.durationSeconds || 5),
         timestamp: Date.now(),
-      });
+      }, user?.uid);
       refreshHistory();
     } catch (err: any) {
+      if (err.name === 'AbortError' || controller.signal.aborted) {
+        // Paused by user
+        setJobs((prev) =>
+          prev.map((j) =>
+            j.id === jobId ? { ...j, status: 'paused', progress: { percent: 0, speed: undefined } } : j
+          )
+        );
+        return;
+      }
       console.error('Job error:', err);
       setJobs((prev) =>
         prev.map((j) =>
@@ -415,13 +458,15 @@ export default function ConverterPage() {
             : j
         )
       );
+    } finally {
+      activeControllersRef.current.delete(jobId);
     }
   };
 
   const convertAll = async () => {
     if (isConvertingAll) return;
     setIsConvertingAll(true);
-    const queued = jobs.filter((j) => j.status === 'queued' || j.status === 'failed');
+    const queued = jobs.filter((j) => j.status === 'queued' || j.status === 'failed' || j.status === 'paused');
     for (const job of queued) {
       await runSingleJob(job.id);
     }
@@ -463,13 +508,13 @@ export default function ConverterPage() {
 
   const handleDeleteHistoryItem = (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    deleteLocalHistoryRecord(id);
+    deleteLocalHistoryRecord(id, user?.uid);
     refreshHistory();
   };
 
   const handleClearHistory = () => {
     if (window.confirm('Are you sure you want to clear your entire conversion and download history?')) {
-      clearLocalHistory();
+      clearLocalHistory(user?.uid);
       refreshHistory();
     }
   };
@@ -504,29 +549,29 @@ export default function ConverterPage() {
   }, [history, historySearch, historyFormatFilter]);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-16">
+    <div className="min-h-screen bg-[#FAF9F6] text-slate-900 font-sans pb-16">
       {/* Top Bar */}
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4 sm:gap-6">
+          <div className="flex items-center gap-4 sm:gap-6 h-full">
             {!loading && !user && (
               <Link href="/" className="flex items-center gap-2 group shrink-0">
                 <Logo size={30} priority />
               </Link>
             )}
 
-            {/* Segmented Tab Switcher */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+            {/* Navigation Tabs */}
+            <div className="flex items-center gap-4 sm:gap-6 h-full">
               <button
                 type="button"
                 onClick={() => setActiveTab('workspace')}
-                className={`flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 sm:gap-2 h-full border-b-2 px-1 text-xs sm:text-sm font-bold transition-all cursor-pointer -mb-px ${
                   activeTab === 'workspace'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'border-[#0B6FFB] text-[#0B6FFB]'
+                    : 'border-transparent text-slate-500 hover:text-slate-900'
                 }`}
               >
-                <Sliders className="w-3.5 h-3.5 text-[#0B6FFB]" />
+                <Sliders className={`w-3.5 h-3.5 ${activeTab === 'workspace' ? 'text-[#0B6FFB]' : 'text-slate-400'}`} />
                 <span>Converter</span>
                 {jobs.length > 0 && (
                   <span className="w-4 h-4 rounded-full bg-[#0B6FFB] text-white text-[10px] flex items-center justify-center font-bold">
@@ -538,16 +583,16 @@ export default function ConverterPage() {
               <button
                 type="button"
                 onClick={() => setActiveTab('history')}
-                className={`flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                className={`flex items-center gap-1.5 sm:gap-2 h-full border-b-2 px-1 text-xs sm:text-sm font-bold transition-all cursor-pointer -mb-px ${
                   activeTab === 'history'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'border-[#0B6FFB] text-[#0B6FFB]'
+                    : 'border-transparent text-slate-500 hover:text-slate-900'
                 }`}
               >
-                <History className="w-3.5 h-3.5 text-slate-700" />
+                <History className={`w-3.5 h-3.5 ${activeTab === 'history' ? 'text-[#0B6FFB]' : 'text-slate-400'}`} />
                 <span>Download History</span>
                 {history.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-800 text-[10px] font-bold">
+                  <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold">
                     {history.length}
                   </span>
                 )}
@@ -570,11 +615,11 @@ export default function ConverterPage() {
         {activeTab === 'workspace' ? (
           <>
             {/* Presets Selector Header */}
-        <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm relative">
+        <section className="bg-white rounded-xl p-6 border border-slate-200 shadow-xs relative">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <div>
-              <h2 className="text-lg font-bold font-nunito flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-[#0B6FFB]" /> Platform & Creator Encoding Presets
+              <h2 className="text-base font-bold font-sans flex items-center gap-2 text-slate-900">
+                <Sliders className="w-4 h-4 text-[#0B6FFB]" /> Platform & Creator Encoding Presets
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
                 Choose an optimized conversion preset for YouTube, TikTok, Instagram, X / Twitter, Discord, WhatsApp, or Studio Master.
@@ -583,7 +628,7 @@ export default function ConverterPage() {
             {!isPro && (
               <Link
                 href="/pricing"
-                className="inline-flex items-center gap-1.5 text-xs font-bold bg-[#0B6FFB] hover:bg-[#0958cc] text-white px-3.5 py-2 rounded-xl transition-all shadow-sm self-start sm:self-auto"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#0B6FFB] hover:bg-[#0958cc] text-white px-3.5 py-2 rounded-md transition-colors shadow-xs self-start sm:self-auto"
               >
                 <Lock className="w-3.5 h-3.5" /> Unlock 4K & GPU Presets
               </Link>
@@ -766,6 +811,29 @@ export default function ConverterPage() {
                 </div>
               </div>
             )}
+
+            {/* Live Preset Capabilities & Changes Preview */}
+            <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-start gap-3 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/70">
+              <div className="p-2 rounded-lg bg-[#0B6FFB]/10 text-[#0B6FFB] shrink-0 mt-0.5">
+                <Sliders className="w-4 h-4" />
+              </div>
+              <div className="space-y-1 min-w-0 text-xs">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-slate-900">Preset Settings:</span>
+                  <span className="font-bold text-[#0B6FFB]">{selectedPreset.name}</span>
+                  <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-mono text-[10px] font-bold uppercase">
+                    {selectedPreset.outputFormat} &bull; {selectedPreset.resolution || 'Native'}
+                  </span>
+                </div>
+                <p className="text-slate-600 text-[11px] leading-relaxed">
+                  {selectedPreset.id === 'tiktok_vertical' || selectedPreset.id === 'instagram_reel'
+                    ? 'Reframes horizontal or standard videos into full 9:16 vertical video (1080×1920) without black bars, tailored for TikTok, Reels, and Shorts.'
+                    : selectedPreset.id === 'instagram_feed'
+                    ? 'Reframes videos into full-screen 1:1 square canvas (1080×1080) for Instagram Feed posts without black letterboxing.'
+                    : `Encodes output as ${selectedPreset.outputFormat.toUpperCase()} at ${selectedPreset.resolution || 'source resolution'} with ${selectedPreset.videoCodec?.toUpperCase() || 'H264'} video and high-fidelity audio normalization.`}
+                </p>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -803,41 +871,6 @@ export default function ConverterPage() {
           </div>
         </section>
 
-        {/* Planned Changes Feature Card for Queued Videos */}
-        {jobs.length > 0 && (
-          <section className="space-y-2">
-            {jobs.length > 1 && (
-              <div className="flex items-center justify-between gap-2 px-1 flex-wrap">
-                <span className="text-xs font-bold text-slate-500">Preview changes for file:</span>
-                <div className="flex items-center gap-1.5 overflow-x-auto py-1 max-w-full">
-                  {jobs.map((j, idx) => (
-                    <button
-                      key={j.id}
-                      type="button"
-                      onClick={() => setSelectedPreviewIndex(idx)}
-                      className={`px-3 py-1 rounded-xl text-xs font-bold transition-all truncate max-w-[180px] cursor-pointer ${
-                        (selectedPreviewIndex >= jobs.length ? 0 : selectedPreviewIndex) === idx
-                          ? 'bg-[#0B6FFB] text-white shadow-xs'
-                          : 'bg-white border border-slate-200 text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      {j.file.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <ConversionChangesPreview
-              file={(jobs[selectedPreviewIndex] || jobs[0]).file}
-              options={(jobs[selectedPreviewIndex] || jobs[0]).options}
-              preset={selectedPreset}
-              gpuCaps={gpuCaps}
-              isPro={isPro}
-              variant="card"
-              defaultExpanded={true}
-            />
-          </section>
-        )}
 
         {/* Queue List */}
         {jobs.length > 0 && (
@@ -910,37 +943,69 @@ export default function ConverterPage() {
                           )}
                         </div>
 
-                        {/* What Will Change Button */}
-                        {job.status === 'queued' && (
-                          <button
-                            type="button"
-                            onClick={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)}
-                            className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#0B6FFB] hover:text-[#0958cc] mt-2 py-0.5 px-2 rounded-lg bg-blue-50/80 hover:bg-blue-100/70 border border-blue-200/60 transition-colors cursor-pointer"
-                          >
-                            <Sparkles className="w-3 h-3" />
-                            <span>{expandedJobId === job.id ? 'Hide Planned Changes' : 'What Will Change'}</span>
-                            <ChevronDown
-                              className={`w-3 h-3 transition-transform duration-200 ${
-                                expandedJobId === job.id ? 'rotate-180' : ''
-                              }`}
-                            />
-                          </button>
-                        )}
+                        {/* What Will Change / Conversion Details Button */}
+                        <button
+                          type="button"
+                          onClick={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)}
+                          className={`inline-flex items-center gap-1.5 text-[11px] font-bold mt-2 py-0.5 px-2.5 rounded-lg border transition-colors cursor-pointer ${
+                            job.status === 'completed'
+                              ? 'text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border-emerald-200'
+                              : 'text-[#0B6FFB] bg-blue-50/80 hover:bg-blue-100/70 border-blue-200/60'
+                          }`}
+                        >
+                          <span>
+                            {expandedJobId === job.id
+                              ? 'Hide Details'
+                              : job.status === 'completed'
+                              ? 'View Changes Made'
+                              : 'What Will Change'}
+                          </span>
+                          <ChevronDown
+                            className={`w-3 h-3 transition-transform duration-200 ${
+                              expandedJobId === job.id ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </button>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
                       {job.status === 'converting' && (
                         <div className="flex items-center gap-3">
-                          <div className="w-32 bg-slate-200 rounded-full h-2 overflow-hidden">
+                          <div className="w-28 sm:w-32 bg-slate-200 rounded-full h-2 overflow-hidden">
                             <div
                               className="bg-[#0B6FFB] h-full rounded-full transition-all duration-300 animate-pulse"
                               style={{ width: `${job.progress.percent}%` }}
                             />
                           </div>
-                          <span className="text-xs font-bold text-slate-700 w-12 text-right">
+                          <span className="text-xs font-bold text-slate-700 w-10 text-right">
                             {job.progress.percent}%
                           </span>
+                          <button
+                            type="button"
+                            onClick={() => pauseJob(job.id)}
+                            className="flex items-center gap-1 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 px-2.5 py-1.5 rounded-xl transition-all shadow-xs cursor-pointer"
+                            title="Pause Conversion"
+                          >
+                            <Pause className="w-3.5 h-3.5 fill-current" />
+                            <span>Pause</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {job.status === 'paused' && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                            Paused
+                          </span>
+                          <button
+                            onClick={() => runSingleJob(job.id)}
+                            className="flex items-center gap-1 text-xs font-bold text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+                            title="Resume Conversion"
+                          >
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <span>Resume</span>
+                          </button>
                         </div>
                       )}
 
@@ -991,7 +1056,7 @@ export default function ConverterPage() {
                       )}
 
                       <div className="flex items-center gap-1">
-                        {(job.status === 'queued' || job.status === 'failed') && (
+                        {(job.status === 'queued' || job.status === 'failed' || job.status === 'paused') && (
                           <button
                             onClick={() => runSingleJob(job.id)}
                             className="p-2 text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded-lg transition-colors"
@@ -1121,80 +1186,66 @@ export default function ConverterPage() {
     ) : (
       /* Full Dedicated Download History View */
       <div className="space-y-6">
-        {/* Header Banner */}
-        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3 bg-[#0B6FFB]/10 text-[#0B6FFB] border border-[#0B6FFB]/20">
-              <History className="w-3.5 h-3.5" /> Conversion & Download Archive
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold font-nunito text-slate-900">
-              Download History
-            </h1>
-            <p className="text-slate-500 text-xs sm:text-sm mt-1 max-w-xl">
-              Access and re-download your previously converted files, open their local folders, and inspect storage savings.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {history.length > 0 && (
-              <button
-                type="button"
-                onClick={handleClearHistory}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-3.5 py-2.5 rounded-xl transition-colors cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Clear History
-              </button>
-            )}
+        {/* Actions Bar */}
+        <div className="flex items-center justify-start gap-3">
+          {history.length > 0 && (
             <button
               type="button"
-              onClick={() => setActiveTab('workspace')}
-              className="inline-flex items-center gap-1.5 bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow active:scale-95 cursor-pointer"
+              onClick={handleClearHistory}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-3.5 py-2 rounded-md transition-colors cursor-pointer"
             >
-              <Sliders className="w-3.5 h-3.5 text-[#0BB3FA]" />
-              Convert New Files
+              <Trash2 className="w-3.5 h-3.5" />
+              Clear History
             </button>
-          </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setActiveTab('workspace')}
+            className="inline-flex items-center gap-1.5 bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-md transition-colors shadow-xs cursor-pointer"
+          >
+            <Sliders className="w-3.5 h-3.5 text-[#0B6FFB]" />
+            Convert New Files
+          </button>
         </div>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#0B6FFB] flex items-center justify-center shrink-0">
-              <FileCheck className="w-6 h-6" />
+        {/* Unified Metrics Bar */}
+        <div className="bg-white rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 shadow-xs">
+          <div className="p-5 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+              <FileCheck className="w-5 h-5 text-[#0B6FFB]" />
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Converted</p>
-              <p className="text-2xl font-black font-nunito text-slate-900">{history.length}</p>
+              <p className="text-[10px] font-bold font-mono uppercase tracking-wider text-slate-500">Total Converted</p>
+              <p className="text-2xl font-extrabold font-mono text-slate-950">{history.length}</p>
               <p className="text-[11px] text-slate-500">Ready for download</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-              <HardDrive className="w-6 h-6" />
+          <div className="p-5 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+              <HardDrive className="w-5 h-5 text-slate-700" />
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Storage Saved</p>
-              <p className="text-2xl font-black font-nunito text-slate-900">{formatSize(totalBytesSaved)}</p>
-              <p className="text-[11px] text-emerald-600 font-medium">Disk space optimized</p>
+              <p className="text-[10px] font-bold font-mono uppercase tracking-wider text-slate-500">Storage Saved</p>
+              <p className="text-2xl font-extrabold font-mono text-slate-950">{formatSize(totalBytesSaved)}</p>
+              <p className="text-[11px] text-slate-500">Disk space optimized</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-              <Zap className="w-6 h-6" />
+          <div className="p-5 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center shrink-0">
+              <Zap className="w-5 h-5 text-slate-700" />
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">GPU Accelerated</p>
-              <p className="text-2xl font-black font-nunito text-slate-900">{gpuConversionsCount}</p>
+              <p className="text-[10px] font-bold font-mono uppercase tracking-wider text-slate-500">GPU Accelerated</p>
+              <p className="text-2xl font-extrabold font-mono text-slate-950">{gpuConversionsCount}</p>
               <p className="text-[11px] text-slate-500">Hardware-encoded files</p>
             </div>
           </div>
         </div>
 
         {/* Filter & Search Bar */}
-        <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="bg-white rounded-xl p-3 sm:p-4 border border-slate-200 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input

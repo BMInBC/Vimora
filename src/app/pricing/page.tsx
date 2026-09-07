@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/firebase/authContext";
 import { Logo } from "@/components/Logo";
 import {
-  CheckCircle2, Shield, ArrowLeft, Loader2, Sparkles
+  CheckCircle2, Shield, ArrowLeft, Loader2
 } from "lucide-react";
 
 export default function PricingPage() {
@@ -49,7 +49,7 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
+    <div className="min-h-screen bg-[#FAF9F6] text-slate-900 font-sans">
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           {!authLoading && !user ? (
@@ -80,75 +80,108 @@ export default function PricingPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
           {/* Free Tier */}
-          <div className="bg-white rounded-3xl p-8 border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div className="bg-white rounded-xl p-8 border border-slate-200 shadow-xs flex flex-col justify-between">
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Starter</span>
-              <h2 className="text-3xl font-bold font-nunito mt-1">Free Tier</h2>
-              <p className="text-3xl font-extrabold mt-4 font-nunito">₦0 <span className="text-sm font-normal text-slate-400">forever</span></p>
-              <p className="text-slate-500 text-xs mt-2 mb-6">Perfect for occasional single-file conversions.</p>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 font-mono">Community</span>
+              <h2 className="text-2xl font-bold font-sans mt-1 text-slate-950">Free Tier</h2>
+              <p className="text-3xl font-extrabold mt-4 font-sans text-slate-950">
+                ₦0 <span className="text-xs font-normal text-slate-500">forever</span>
+              </p>
+              <p className="text-slate-500 text-xs mt-2 mb-6">Standard offline conversion for occasional single files.</p>
 
-              <ul className="space-y-3 text-sm text-slate-600">
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Up to 5 conversions / day</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> 720p output resolution</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> CPU encoding (libx264)</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> MP4 & MP3 standard exports</li>
-              </ul>
+              <div className="space-y-2.5 text-xs text-slate-600 pt-4 border-t border-slate-100">
+                <div className="flex justify-between py-1 border-b border-slate-100">
+                  <span className="text-slate-500">Daily Cap</span>
+                  <span className="font-semibold text-slate-900 font-mono">5 files / day</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-100">
+                  <span className="text-slate-500">Resolution</span>
+                  <span className="font-semibold text-slate-900 font-mono">720p HD</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-100">
+                  <span className="text-slate-500">Encoding Engine</span>
+                  <span className="font-semibold text-slate-900 font-mono">CPU (libx264)</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-100">
+                  <span className="text-slate-500">Output Containers</span>
+                  <span className="font-semibold text-slate-900 font-mono">MP4, MP3</span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-slate-500">Cloud Uploads</span>
+                  <span className="font-semibold text-emerald-600 font-mono">Zero (100% Local)</span>
+                </div>
+              </div>
             </div>
 
             <Link
               href="/converter"
-              className="mt-8 block text-center bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-3.5 rounded-xl transition-all text-sm"
+              className="mt-8 block text-center bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold py-3 rounded-md transition-colors text-xs"
             >
               Continue with Free
             </Link>
           </div>
 
           {/* Pro Plan */}
-          <div className="bg-slate-950 text-white rounded-3xl p-8 border border-slate-800 shadow-2xl flex flex-col justify-between relative">
-            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#0B6FFB] text-white shadow-md shadow-[#0B6FFB]/25 text-xs font-black px-4 py-1 rounded-full">
+          <div className="bg-slate-950 text-white rounded-xl p-8 border border-slate-800 shadow-lg flex flex-col justify-between relative">
+            <div className="absolute -top-3 left-6 bg-[#0B6FFB] text-white text-[10px] font-bold font-mono px-2.5 py-0.5 rounded">
               {isPro ? "CURRENT PLAN" : "RECOMMENDED"}
             </div>
 
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-[#0BB3FA]">Unlimited Power</span>
-              <h2 className="text-3xl font-bold font-nunito mt-1">Vimora Pro</h2>
-              <p className="text-4xl font-extrabold mt-4 font-nunito">
-                ₦4,500 <span className="text-sm font-normal text-slate-400">/ month</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-[#0B6FFB] font-mono">Workstation</span>
+              <h2 className="text-2xl font-bold font-sans mt-1">Vimora Pro</h2>
+              <p className="text-3xl font-extrabold mt-4 font-sans">
+                ₦4,500 <span className="text-xs font-normal text-slate-400">per month</span>
               </p>
-              <p className="text-slate-300 text-xs mt-2 mb-6">Designed for editors, agencies, and video producers.</p>
+              <p className="text-slate-400 text-xs mt-2 mb-6">Designed for video editors, agencies, and heavy creators.</p>
 
-              <ul className="space-y-3 text-sm text-slate-200">
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#0B6FFB]" /> Unlimited daily conversions</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#0B6FFB]" /> GPU acceleration (NVENC, AMF, QSV)</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#0B6FFB]" /> 4K & 8K ultra-HD presets</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#0B6FFB]" /> Bulk queue: 1,000+ files</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-[#0B6FFB]" /> Desktop application license key</li>
-              </ul>
+              <div className="space-y-2.5 text-xs text-slate-300 pt-4 border-t border-slate-800">
+                <div className="flex justify-between py-1 border-b border-slate-800/80">
+                  <span className="text-slate-400">Daily Cap</span>
+                  <span className="font-semibold text-white font-mono">Unlimited</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-800/80">
+                  <span className="text-slate-400">Resolution</span>
+                  <span className="font-semibold text-white font-mono">8K UHD / 4K 60FPS</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-800/80">
+                  <span className="text-slate-400">Encoding Engine</span>
+                  <span className="font-semibold text-[#0B6FFB] font-mono">NVENC, AMF, QSV</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-800/80">
+                  <span className="text-slate-400">Queue Capacity</span>
+                  <span className="font-semibold text-white font-mono">1,000+ files</span>
+                </div>
+                <div className="flex justify-between py-1">
+                  <span className="text-slate-400">Desktop License</span>
+                  <span className="font-semibold text-emerald-400 font-mono">Tauri Client Included</span>
+                </div>
+              </div>
             </div>
 
             <div>
               {isPro ? (
                 <Link
                   href="/converter"
-                  className="mt-8 w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg text-sm"
+                  className="mt-8 w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-md transition-colors text-xs"
                 >
-                  <CheckCircle2 className="w-4 h-4" /> Pro Active — Launch Converter
+                  Pro Active — Open Converter
                 </Link>
               ) : (
                 <button
                   onClick={handleCheckout}
                   disabled={loading}
-                  className="mt-8 w-full flex items-center justify-center gap-2 bg-[#0B6FFB] hover:bg-[#0958cc] text-white shadow-lg shadow-[#0B6FFB]/25 font-bold py-3.5 rounded-xl transition-all active:scale-95 text-sm cursor-pointer"
+                  className="mt-8 w-full flex items-center justify-center gap-2 bg-[#0B6FFB] hover:bg-[#0958cc] text-white font-bold py-3 rounded-md transition-colors text-xs cursor-pointer disabled:opacity-50"
                 >
                   {loading ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Initializing Paystack...
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Initializing Paystack...
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-4 h-4" /> Upgrade with Paystack
+                      Subscribe with Paystack (₦4,500/mo)
                     </>
                   )}
                 </button>

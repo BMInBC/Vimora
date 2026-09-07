@@ -5,124 +5,103 @@ import { useState, useEffect } from "react";
 import { Logo } from "@/components/Logo";
 import {
   Zap, ChevronRight, Shield, Cpu, Download, Film,
-  Music, Clock, Users, CheckCircle2,
-  ArrowRight, Star, Lock, Globe, Layers, RefreshCw,
-  Sparkles, UploadCloud, Sliders
+  Sliders, Lock, Globe, HardDrive, Check,
+  ArrowRight, FileVideo, Layers, Play
 } from "lucide-react";
 
 const NAV_LINKS = [
-  { label: "Features", href: "#features" },
+  { label: "Capabilities", href: "#capabilities" },
+  { label: "Architecture", href: "#architecture" },
   { label: "Pricing", href: "#pricing" },
-  { label: "How It Works", href: "#how-it-works" },
-  { label: "Contact", href: "mailto:fawazadekanmbi19@gmail.com" },
+  { label: "Terms", href: "/terms" },
+  { label: "Privacy", href: "/privacy" },
 ];
 
-const FEATURES = [
+const CAPABILITIES = [
   {
-    image: "/features/private_3d.png",
-    title: "100% Private",
-    desc: "Your files never leave your computer. All conversion happens locally on-device with zero uploads, zero cloud storage.",
-    badge: "Zero Uploads",
+    title: "Hardware Transcoding Pipelines",
+    tag: "NVIDIA / AMD / Intel",
+    desc: "Direct integration with NVENC, AMF, and Intel QSV encoder chips. Offload transcoding from CPU cores for up to 18x throughput saturation.",
+    specs: ["H.264 (AVC) & H.265 (HEVC)", "AV1 hardware encoding", "Zero CPU throttling"],
   },
   {
-    image: "/features/gpu_3d_icon.png",
-    title: "GPU Accelerated",
-    desc: "Harness NVIDIA NVENC, AMD AMF, and Intel QSV hardware encoders for blazing-fast conversions that saturate your GPU.",
-    badge: "Hardware Encoded",
+    title: "Zero-Knowledge Local Execution",
+    tag: "100% On-Device",
+    desc: "All processing happens strictly within your local OS environment. No telemetry, no remote servers, no file uploads, and full offline capability.",
+    specs: ["Offline native binary", "Zero cloud upload footprint", "Memory-safe local buffers"],
   },
   {
-    image: "/features/bulk_3d_icon.png",
-    title: "Bulk Processing",
-    desc: "Queue hundreds of files at once. Set output formats, quality presets, and let Vimora process them overnight automatically.",
-    badge: "Massive Batches",
+    title: "High-Throughput Batch Engine",
+    tag: "Massive Queues",
+    desc: "Queue hundreds of files simultaneously. Automatically route video and audio streams into unified presets without sequential bottlenecking.",
+    specs: ["1,000+ files per batch", "Preserve directory structures", "Configurable thread pools"],
   },
   {
-    image: "/features/video_3d_icon.png",
-    title: "Video Formats",
-    desc: "Convert between MP4, MOV, AVI, MKV, WebM, H.264, H.265/HEVC, AV1, and dozens more with lossless or compressed output.",
-    badge: "Any Container",
-  },
-  {
-    image: "/features/audio_3d_icon.png",
-    title: "Audio Conversion",
-    desc: "Extract audio, transcode between MP3, AAC, FLAC, OGG, WAV, and normalize loudness to broadcast standards (LUFS).",
-    badge: "LUFS Normalized",
-  },
-  {
-    image: "/features/presets_3d_icon.png",
-    title: "Smart Presets",
-    desc: "One-click presets for YouTube upload, Instagram Reels, Twitter, Discord, archival HEVC, and audiophile FLAC exports.",
-    badge: "One-Click Ready",
+    title: "Broadcast Loudness Normalization",
+    tag: "EBU R128 / LUFS",
+    desc: "Standardize podcast and video audio directly during transcoding. Apply two-pass loudness filters targeting platform broadcast criteria.",
+    specs: ["Integrated LUFS targeting (-14 to -23)", "True Peak limiting", "WAV, FLAC, AAC, MP3"],
   },
 ];
 
-const STEPS = [
+const WORKFLOW_STEPS = [
   {
-    num: "01",
-    title: "Drop your files",
-    desc: "Drag and drop any video or audio files — single files, folders, or hundreds at once.",
-    icon: UploadCloud,
+    step: "01",
+    title: "Import Media Sources",
+    desc: "Select single media files or entire folder trees. Vimora parses containers, tracks, audio bitrates, and video codecs instantly.",
   },
   {
-    num: "02",
-    title: "Choose a preset",
-    desc: "Pick a format, quality, codec, or resolution. Use smart presets for popular platforms instantly.",
-    icon: Sliders,
+    step: "02",
+    title: "Configure Pipeline",
+    desc: "Choose delivery targets (YouTube, Reels, WebM, Archival HEVC) or adjust CRF, bitrate, resolution, and hardware encoder.",
   },
   {
-    num: "03",
-    title: "Convert at GPU speed",
-    desc: "Vimora leverages your hardware encoder. Files process 10 to 50 times faster than CPU-only converters.",
-    icon: Zap,
+    step: "03",
+    title: "Execute Transcode",
+    desc: "Local hardware encodes all queued items directly to your target directory. Completed files are ready immediately with zero network latency.",
   },
 ];
 
 const PLANS = [
   {
-    name: "Free",
+    name: "Community",
     price: "₦0",
     period: "forever",
-    description: "For individuals trying Vimora out.",
-    features: [
-      "Up to 5 conversions/day",
-      "720p output resolution",
-      "CPU encoding",
-      "MP4, MP3 output",
-      "Conversion history (7 days)",
+    description: "Standard offline converter for occasional single files.",
+    specs: [
+      { label: "Daily Conversion Cap", val: "5 files per day" },
+      { label: "Maximum Resolution", val: "720p HD" },
+      { label: "Encoding Engine", val: "CPU (libx264, libmp3lame)" },
+      { label: "Container Formats", val: "MP4, MP3" },
+      { label: "Batch Queue", val: "Sequential single-file" },
+      { label: "Cloud Uploads", val: "Zero (Local execution)" },
     ],
     cta: "Start Free",
     href: "/signup",
     highlight: false,
   },
   {
-    name: "Pro",
+    name: "Pro License",
     price: "₦4,500",
-    period: "/month",
-    description: "For creators and small agencies.",
-    features: [
-      "Unlimited conversions",
-      "4K / 8K output",
-      "GPU acceleration (NVENC, AMF, QSV)",
-      "All formats & codecs",
-      "Bulk queue (1,000+ files)",
-      "Custom preset library",
-      "Priority support",
-      "Lifetime history",
+    period: "per month",
+    description: "Full hardware-accelerated batch workstation for video editors.",
+    specs: [
+      { label: "Daily Conversion Cap", val: "Unlimited" },
+      { label: "Maximum Resolution", val: "8K UHD / 4K 60FPS" },
+      { label: "Encoding Engine", val: "GPU Hardware (NVENC, AMF, QSV)" },
+      { label: "Container Formats", val: "All Video & Audio Codecs" },
+      { label: "Batch Queue", val: "1,000+ files multi-threaded" },
+      { label: "Desktop License", val: "Tauri Windows Desktop App Key" },
     ],
-    cta: "Upgrade to Pro",
+    cta: "Get Pro License",
     href: "/pricing",
     highlight: true,
   },
 ];
 
-const TESTIMONIALS = [
-  { name: "Adaeze O.", role: "Video Editor, Lagos", body: "Vimora cut my batch export time from 4 hours to 20 minutes. The GPU acceleration is insane.", rating: 5 },
-  { name: "Chidi M.", role: "Podcast Producer", body: "Finally a converter that works offline, respects my privacy, and handles 300-episode batch jobs without breaking a sweat.", rating: 5 },
-  { name: "Temi A.", role: "Content Agency Owner", body: "Our team converts client deliverables daily. Vimora Pro pays for itself every single week.", rating: 5 },
-];
-
 export default function HomePage() {
   const [scrolled, setScrolled] = useState(false);
+  const [activeDemoTab, setActiveDemoTab] = useState<"queue" | "terminal">("queue");
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -131,375 +110,417 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div className="relative w-full min-h-screen overflow-x-hidden font-sans">
-      {/* Background Layer: Smooth Mesh Gradients & Soft Glows (100% Local & Reliable) */}
-      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-[#e8f2fa] via-[#f0f6fc]/80 to-[#F7F5F2]" />
-        <div className="absolute top-[10%] -left-[15%] w-[55vw] h-[55vw] rounded-full bg-gradient-to-br from-blue-200/40 to-cyan-100/30 blur-3xl" />
-        <div className="absolute top-[25%] -right-[15%] w-[50vw] h-[50vw] rounded-full bg-gradient-to-bl from-purple-200/30 to-pink-100/20 blur-3xl" />
-        <div className="absolute bottom-[10%] left-[20%] w-[45vw] h-[45vw] rounded-full bg-gradient-to-tr from-blue-100/40 to-sky-100/30 blur-3xl" />
-      </div>
+    <div className="relative w-full min-h-screen bg-[#FAF9F6] text-slate-900 font-sans">
+      {/* Navigation */}
+      <nav
+        className={`sticky top-0 z-50 w-full transition-all duration-200 ${
+          scrolled
+            ? "bg-[#FAF9F6] border-b border-slate-200"
+            : "bg-[#FAF9F6]/90 border-b border-slate-200/60"
+        }`}
+      >
+        <div className="max-w-7xl mx-auto px-6 md:px-12 h-16 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2 group">
+            <Logo size={28} priority />
+          </Link>
 
-      {/* Content Wrapper */}
-      <div className="relative z-10 flex flex-col min-h-screen">
-        {/* Navigation */}
-        <nav
-          className={`sticky top-0 z-50 w-full transition-all duration-300 ${
-            scrolled ? "bg-white/85 backdrop-blur-xl shadow-sm border-b border-slate-900/5" : ""
-          }`}
-        >
-          <div className="max-w-7xl mx-auto px-6 md:px-12 py-5 flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-2 group">
-              <Logo size={32} priority />
-            </Link>
-
-            <div className="hidden md:flex items-center gap-8 text-[15px] font-medium text-slate-700">
-              {NAV_LINKS.map((l) => (
-                <a key={l.label} href={l.href} className="hover:text-black transition-colors">
-                  {l.label}
-                </a>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Link
-                href="/login"
-                className="hidden sm:inline-flex text-sm font-semibold text-slate-700 hover:text-slate-900 px-4 py-2 rounded-xl hover:bg-black/5 transition-all"
-              >
-                Sign In
-              </Link>
-              <Link
-                href="/signup"
-                className="inline-flex items-center gap-1.5 bg-slate-950 text-white text-sm font-bold px-5 py-2.5 rounded-xl hover:bg-slate-800 shadow transition-all active:scale-95"
-              >
-                Get Started
-              </Link>
-            </div>
-          </div>
-        </nav>
-
-        {/* Hero Section */}
-        <section className="flex-1 flex flex-col items-center justify-center text-center px-6 pt-24 pb-20 max-w-5xl mx-auto w-full">
-          <div className="inline-flex items-center gap-2 bg-white/70 backdrop-blur-md text-slate-700 text-xs font-bold px-4 py-2 rounded-full border border-slate-900/10 shadow-sm mb-8 animate-fade-in">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Free to start &bull; No upload &bull; 100% local processing
-          </div>
-
-          <h1 className="text-5xl md:text-7xl font-extrabold text-slate-900 leading-[1.08] tracking-tight font-nunito mb-6 animate-slide-up">
-            Convert media at{" "}
-            <span className="relative inline-block">
-              <span className="relative z-10">GPU speed.</span>
-              <span className="absolute -bottom-1 left-0 right-0 h-3 bg-[#0B6FFB]/25 rounded -z-0" />
-            </span>
-            <br />
-            Privately.
-          </h1>
-
-          <p className="text-slate-600 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed mb-10">
-            Vimora is a desktop media converter for content creators. Bulk-convert video and audio files locally using your GPU &mdash; no uploads, no subscriptions to start, no privacy tradeoffs.
-          </p>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10">
-            <Link
-              href="/download"
-              className="inline-flex items-center gap-2 bg-slate-950 text-white text-[15px] font-bold px-7 py-4 rounded-2xl hover:bg-slate-800 shadow-lg transition-all active:scale-95"
-            >
-              <Download className="w-5 h-5 text-[#0BB3FA]" />
-              Download for Windows
-              <span className="text-[11px] font-normal opacity-70 ml-0.5">v1.0 &bull; Free</span>
-            </Link>
-            <Link
-              href="/converter"
-              className="inline-flex items-center gap-2 bg-white/80 backdrop-blur text-slate-800 text-[15px] font-bold px-7 py-4 rounded-2xl border border-slate-900/10 hover:bg-white shadow transition-all active:scale-95"
-            >
-              Use in Browser
-              <ChevronRight className="w-4 h-4" />
-            </Link>
-          </div>
-
-          <div className="flex items-center justify-center gap-6 text-sm text-slate-500 flex-wrap">
-            {["FFmpeg-powered", "NVENC &bull; AMF &bull; QSV", "Windows 10+"].map((t, idx) => (
-              <span key={idx} className="flex items-center gap-1.5 font-medium">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span dangerouslySetInnerHTML={{ __html: t }} />
-              </span>
+          <div className="hidden md:flex items-center gap-8 text-xs font-semibold text-slate-600">
+            {NAV_LINKS.map((l) => (
+              <a key={l.label} href={l.href} className="hover:text-slate-950 transition-colors">
+                {l.label}
+              </a>
             ))}
           </div>
-        </section>
 
-        {/* Social Proof */}
-        <section className="py-10 px-6">
-          <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-center gap-x-10 gap-y-4 text-slate-600 text-sm">
-            <span className="font-bold text-slate-800">Loved by creators across Africa & beyond</span>
-            <span className="flex items-center gap-1.5"><Users className="w-4 h-4 text-slate-500" /> 2,400+ users</span>
-            <span className="flex items-center gap-1.5"><Film className="w-4 h-4 text-slate-500" /> 1.2M files converted</span>
-            <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-slate-500" /> Avg. 18x faster than browser tools</span>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/login"
+              className="text-xs font-semibold text-slate-700 hover:text-slate-900 px-3.5 py-2 rounded-md hover:bg-slate-100 transition-colors"
+            >
+              Sign In
+            </Link>
+            <Link
+              href="/download"
+              className="inline-flex items-center gap-1.5 bg-slate-950 text-white text-xs font-bold px-4 py-2 rounded-md hover:bg-slate-800 transition-colors"
+            >
+              Download
+            </Link>
           </div>
-        </section>
+        </div>
+      </nav>
 
-        {/* Features Grid */}
-        <section id="features" className="py-24 px-6">
-          <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-16">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-50 border border-purple-200/60 text-purple-900 text-xs font-bold uppercase tracking-wider mb-4">
-                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-                Next-Gen Local Engine
-              </div>
-              <h2 className="text-4xl md:text-5xl font-extrabold text-slate-900 font-nunito mb-4">
-                Everything you need.<br />Nothing you don&apos;t.
-              </h2>
-              <p className="text-slate-600 text-lg max-w-xl mx-auto">
-                Vimora is built for speed, privacy, and bulk workflows &mdash; not for cloud upsells.
-              </p>
+      {/* Hero Section */}
+      <section className="px-6 pt-20 pb-16 max-w-5xl mx-auto text-center">
+        <div className="inline-flex items-center gap-2 bg-white border border-slate-200 text-slate-700 text-xs font-semibold px-3.5 py-1.5 rounded-md mb-8">
+          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          Offline Architecture: Zero Cloud Uploads, 100% Local Hardware Processing
+        </div>
+
+        <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold text-slate-950 tracking-tight leading-[1.08] mb-6">
+          Convert media at GPU speed.
+          <br />
+          <span className="text-[#0B6FFB]">Privately on your machine.</span>
+        </h1>
+
+        <p className="text-slate-600 text-base sm:text-lg max-w-2xl mx-auto leading-relaxed mb-10">
+          Vimora is a desktop-class media transcoder for video editors, agencies, and creators.
+          Bulk-convert video and audio locally using hardware encoders without file uploads,
+          cloud limits, or data exposure.
+        </p>
+
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-10">
+          <Link
+            href="/download"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-slate-950 text-white text-xs font-bold px-6 py-3.5 rounded-md hover:bg-slate-800 transition-colors"
+          >
+            <Download className="w-4 h-4 text-[#0B6FFB]" />
+            Download for Windows (64-bit)
+          </Link>
+          <Link
+            href="/converter"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white text-slate-900 text-xs font-bold px-6 py-3.5 rounded-md border border-slate-200 hover:bg-slate-50 transition-colors"
+          >
+            Launch Web Converter
+            <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+          </Link>
+        </div>
+
+        <div className="flex items-center justify-center gap-6 text-xs text-slate-500 flex-wrap">
+          <span className="flex items-center gap-1.5 font-medium">
+            <span className="font-mono text-slate-800 font-bold">FFmpeg 7.0</span> embedded engine
+          </span>
+          <span className="text-slate-300">•</span>
+          <span className="flex items-center gap-1.5 font-medium">
+            <span className="font-mono text-slate-800 font-bold">NVENC / AMF / QSV</span> auto-routed
+          </span>
+          <span className="text-slate-300">•</span>
+          <span className="flex items-center gap-1.5 font-medium">
+            <span className="font-mono text-slate-800 font-bold">Windows 10 / 11</span> native
+          </span>
+        </div>
+
+        {/* Live Product Demo Preview Mockup */}
+        <div className="mt-16 text-left border border-slate-200 rounded-xl bg-white shadow-xs overflow-hidden">
+          {/* Mock Window Top Bar */}
+          <div className="bg-slate-50 border-b border-slate-200 px-4 py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+              <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+              <span className="w-2.5 h-2.5 rounded-full bg-slate-300" />
+              <span className="ml-2 font-mono text-[11px] text-slate-600 font-medium">
+                Vimora Workstation v1.0 — Local Hardware Pipeline
+              </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-7">
-              {FEATURES.map(({ image, title, desc, badge }) => (
-                <div
-                  key={title}
-                  className="group relative bg-white/80 backdrop-blur-md border border-slate-900/10 rounded-3xl p-7 hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 flex flex-col justify-between overflow-hidden"
-                >
-                  <div className="absolute -right-10 -top-10 w-32 h-32 bg-gradient-to-br from-purple-400/10 to-cyan-400/10 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-500 pointer-events-none" />
-
-                  <div>
-                    {/* 3D Icon Container */}
-                    <div className="relative w-24 h-24 mb-6 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100/90 p-2 border border-slate-200/80 shadow-sm group-hover:scale-105 group-hover:shadow-md transition-all duration-300">
-                      <img
-                        src={image}
-                        alt={title}
-                        className="w-full h-full object-contain drop-shadow-md rounded-xl"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <h3 className="text-xl font-bold text-slate-900 font-nunito group-hover:text-purple-950 transition-colors">
-                        {title}
-                      </h3>
-                      {badge && (
-                        <span className="text-[11px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                          {badge}
-                        </span>
-                      )}
-                    </div>
-
-                    <p className="text-slate-600 text-sm leading-relaxed mt-2.5">{desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* How It Works - Horizontal Layout */}
-        <section id="how-it-works" className="py-24 px-6 bg-slate-950/[0.03] border-y border-slate-900/5">
-          <div className="max-w-6xl mx-auto">
-            <div className="text-center mb-16">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#0B6FFB]/10 border border-[#0B6FFB]/20 text-[#0B6FFB] text-xs font-bold uppercase tracking-wider mb-4">
-                <Clock className="w-3.5 h-3.5 text-[#0B6FFB]" />
-                Simple 3-Step Process
-              </div>
-              <h2 className="text-4xl md:text-5xl font-extrabold text-slate-900 font-nunito mb-4">
-                Convert in three steps
-              </h2>
-              <p className="text-slate-600 text-lg max-w-lg mx-auto">
-                No guides needed. Vimora is as fast to learn as it is to run.
-              </p>
-            </div>
-
-            {/* Horizontal steps pipeline */}
-            <div className="relative">
-              {/* Horizontal connecting track across cards on desktop */}
-              <div className="hidden md:block absolute top-1/2 left-16 right-16 h-1 bg-gradient-to-r from-purple-300 via-cyan-300 to-blue-400 -translate-y-1/2 z-0 rounded-full opacity-60" />
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
-                {STEPS.map(({ num, title, desc, icon: StepIcon }, idx) => (
-                  <div
-                    key={num}
-                    className="relative bg-white/90 backdrop-blur-md border border-slate-900/10 rounded-3xl p-7 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between"
-                  >
-                    {/* Arrow badge connecting horizontally between cards */}
-                    {idx < STEPS.length - 1 && (
-                      <div className="hidden md:flex absolute -right-3.5 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full bg-white border border-slate-200 items-center justify-center shadow-md text-slate-500">
-                        <ArrowRight className="w-3.5 h-3.5 text-purple-600" />
-                      </div>
-                    )}
-
-                    {/* Step Card Header: Horizontal alignment with number pill and icon */}
-                    <div>
-                      <div className="flex items-center justify-between gap-4 mb-5">
-                        <div className="flex items-center gap-3">
-                          <span className="w-10 h-10 rounded-2xl bg-black text-white font-extrabold text-sm flex items-center justify-center shadow-sm">
-                            {num}
-                          </span>
-                          <span className="text-xs font-bold font-mono tracking-wider uppercase text-slate-400">
-                            Step {num}
-                          </span>
-                        </div>
-                        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700">
-                          <StepIcon className="w-5 h-5 text-slate-800" />
-                        </div>
-                      </div>
-
-                      <h3 className="text-xl font-bold text-slate-900 font-nunito mb-2">
-                        {title}
-                      </h3>
-                      <p className="text-slate-600 text-sm leading-relaxed">
-                        {desc}
-                      </p>
-                    </div>
-
-                    <div className="mt-6 pt-4 border-t border-slate-100 flex items-center gap-2 text-xs font-semibold text-[#0B6FFB]">
-                      <span className="w-2 h-2 rounded-full bg-[#0B6FFB] animate-pulse" />
-                      Instant Workflow
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                NVENC Active
+              </span>
+              <span className="font-mono text-[10px] text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
+                Localhost Only
+              </span>
             </div>
           </div>
-        </section>
 
-        {/* Pricing */}
-        <section id="pricing" className="py-24 px-6">
-          <div className="max-w-5xl mx-auto">
-            <div className="text-center mb-16">
-              <h2 className="text-4xl md:text-5xl font-extrabold text-slate-900 font-nunito mb-4">
-                Simple, honest pricing
-              </h2>
-              <p className="text-slate-600 text-lg max-w-lg mx-auto">
-                Pay only when you need more power. Instant activation via Paystack.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
-              {PLANS.map((plan) => (
-                <div
-                  key={plan.name}
-                  className={`relative flex flex-col rounded-3xl p-8 border transition-all duration-300 ${
-                    plan.highlight
-                      ? "bg-slate-950 text-white border-transparent shadow-2xl scale-[1.02]"
-                      : "bg-white/80 backdrop-blur border-slate-900/10 hover:shadow-lg"
+          {/* Mock App Body */}
+          <div className="p-6">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+              <div>
+                <p className="text-xs font-bold text-slate-900">Active Transcoding Queue</p>
+                <p className="text-[11px] text-slate-500">3 jobs in progress • Hardware acceleration enabled</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveDemoTab("queue")}
+                  className={`text-[11px] font-semibold px-2.5 py-1 rounded transition-colors ${
+                    activeDemoTab === "queue"
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                   }`}
                 >
-                  {plan.highlight && (
-                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#0B6FFB] text-white shadow-md shadow-[#0B6FFB]/25 text-xs font-black px-4 py-1.5 rounded-full shadow">
-                      MOST POPULAR
+                  Job Queue
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveDemoTab("terminal")}
+                  className={`text-[11px] font-semibold px-2.5 py-1 rounded transition-colors ${
+                    activeDemoTab === "terminal"
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  FFmpeg Flags
+                </button>
+              </div>
+            </div>
+
+            {activeDemoTab === "queue" ? (
+              <div className="space-y-3 font-mono text-xs">
+                {/* Job 1 */}
+                <div className="border border-slate-200 rounded-lg p-3 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded bg-blue-50 border border-blue-200 text-[#0B6FFB] flex items-center justify-center font-bold text-[10px]">
+                      MOV
                     </div>
-                  )}
-                  <div
-                    className={`text-sm font-bold uppercase tracking-widest mb-1 ${
-                      plan.highlight ? "text-[#0BB3FA]" : "text-slate-500"
-                    }`}
-                  >
-                    {plan.name}
+                    <div>
+                      <p className="text-slate-900 font-bold font-sans">A-Roll_Interview_4K.mov</p>
+                      <p className="text-[10px] text-slate-500">3840x2160 • ProRes 422 • 4.2 GB</p>
+                    </div>
                   </div>
-                  <div
-                    className={`text-4xl font-extrabold font-nunito ${
-                      plan.highlight ? "text-white" : "text-slate-900"
-                    }`}
-                  >
-                    {plan.price}
-                    <span className={`text-base font-medium ${plan.highlight ? "text-white/60" : "text-slate-400"}`}>
+                  <div className="flex items-center gap-4">
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-200 text-slate-800">
+                      H.265 NVENC
+                    </span>
+                    <div className="w-32">
+                      <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                        <span>Done</span>
+                        <span className="text-emerald-600 font-bold">100%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div className="h-full bg-emerald-500 rounded-full w-full" />
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-slate-600">842 MB (-80%)</span>
+                  </div>
+                </div>
+
+                {/* Job 2 */}
+                <div className="border border-slate-200 rounded-lg p-3 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded bg-purple-50 border border-purple-200 text-purple-700 flex items-center justify-center font-bold text-[10px]">
+                      MP4
+                    </div>
+                    <div>
+                      <p className="text-slate-900 font-bold font-sans">Podcast_Episode_108_Master.wav</p>
+                      <p className="text-[10px] text-slate-500">48 kHz • 24-bit PCM • 820 MB</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-200 text-slate-800">
+                      AAC 320k + LUFS -14
+                    </span>
+                    <div className="w-32">
+                      <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                        <span>Encoding</span>
+                        <span className="text-[#0B6FFB] font-bold">78%</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div className="h-full bg-[#0B6FFB] rounded-full w-[78%]" />
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-slate-600">142 FPS</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-slate-900 text-slate-200 font-mono text-xs p-4 rounded-lg overflow-x-auto leading-relaxed">
+                <p className="text-slate-400"># Direct local FFmpeg command generated by Vimora:</p>
+                <p className="text-emerald-400 mt-1">
+                  ffmpeg -hwaccel cuda -hwaccel_output_format cuda -i &quot;A-Roll_Interview_4K.mov&quot; \
+                </p>
+                <p className="text-blue-300 pl-4">
+                  -c:v hevc_nvenc -preset p5 -tune hq -cq 22 -b:v 0 \
+                </p>
+                <p className="text-yellow-300 pl-4">
+                  -c:a aac -b:a 320k -af &quot;loudnorm=I=-14:LRA=11:TP=-1.5&quot; \
+                </p>
+                <p className="text-slate-300 pl-4">&quot;A-Roll_Interview_4K_NVENC.mp4&quot;</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Capabilities Section */}
+      <section id="capabilities" className="py-20 px-6 border-t border-slate-200 bg-white">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-14">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#0B6FFB] mb-2 font-mono">
+              Core Architecture
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-950 tracking-tight">
+              Designed for local throughput, not cloud upsells.
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {CAPABILITIES.map((cap) => (
+              <div
+                key={cap.title}
+                className="border border-slate-200 rounded-xl p-6 sm:p-8 bg-[#FAF9F6] flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <h3 className="text-lg font-bold text-slate-950 font-sans">{cap.title}</h3>
+                    <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700">
+                      {cap.tag}
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-6">
+                    {cap.desc}
+                  </p>
+                </div>
+
+                <div className="pt-4 border-t border-slate-200/80 space-y-2">
+                  {cap.specs.map((spec) => (
+                    <div key={spec} className="flex items-center gap-2 text-xs text-slate-700 font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#0B6FFB]" />
+                      {spec}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 3-Step Execution Workflow */}
+      <section id="architecture" className="py-20 px-6 border-t border-slate-200 bg-[#FAF9F6]">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-14">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#0B6FFB] mb-2 font-mono">
+              Operational Sequence
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-950 tracking-tight">
+              How the local pipeline functions
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {WORKFLOW_STEPS.map((s) => (
+              <div key={s.step} className="border border-slate-200 rounded-xl p-6 bg-white shadow-xs">
+                <div className="font-mono text-sm font-bold text-white bg-slate-950 w-7 h-7 rounded flex items-center justify-center mb-4">
+                  {s.step}
+                </div>
+                <h3 className="text-base font-bold text-slate-950 mb-2 font-sans">{s.title}</h3>
+                <p className="text-xs text-slate-600 leading-relaxed">{s.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing Section */}
+      <section id="pricing" className="py-20 px-6 border-t border-slate-200 bg-white">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-14">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#0B6FFB] mb-2 font-mono">
+              Transparent Licensing
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-950 tracking-tight mb-2">
+              Community Free & Pro Workstation
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500">
+              Zero hidden fees. Pro subscriptions unlock unlimited bulk queues and hardware acceleration.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {PLANS.map((plan) => (
+              <div
+                key={plan.name}
+                className={`border rounded-xl p-6 sm:p-8 flex flex-col justify-between ${
+                  plan.highlight
+                    ? "bg-slate-950 text-white border-slate-800"
+                    : "bg-[#FAF9F6] text-slate-900 border-slate-200"
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span
+                      className={`text-xs font-bold uppercase tracking-wider font-mono ${
+                        plan.highlight ? "text-[#0B6FFB]" : "text-slate-500"
+                      }`}
+                    >
+                      {plan.name}
+                    </span>
+                    {plan.highlight && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#0B6FFB] text-white">
+                        RECOMMENDED
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-baseline gap-2 mb-2">
+                    <span className="text-3xl sm:text-4xl font-extrabold font-sans">{plan.price}</span>
+                    <span className={`text-xs ${plan.highlight ? "text-slate-400" : "text-slate-500"}`}>
                       {plan.period}
                     </span>
                   </div>
-                  <p className={`text-sm mt-1 mb-6 ${plan.highlight ? "text-white/60" : "text-slate-500"}`}>
+
+                  <p className={`text-xs mb-6 ${plan.highlight ? "text-slate-300" : "text-slate-600"}`}>
                     {plan.description}
                   </p>
-                  <ul className="flex flex-col gap-3 mb-8 flex-1">
-                    {plan.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2.5 text-sm">
-                        <CheckCircle2
-                          className={`w-4 h-4 shrink-0 mt-0.5 ${
-                            plan.highlight ? "text-[#0B6FFB]" : "text-emerald-500"
-                          }`}
-                        />
-                        <span className={plan.highlight ? "text-white/85" : "text-slate-600"}>{f}</span>
-                      </li>
+
+                  <div className="space-y-3 text-xs mb-8 pt-4 border-t border-slate-200/20">
+                    {plan.specs.map((item) => (
+                      <div key={item.label} className="flex justify-between gap-4">
+                        <span className={plan.highlight ? "text-slate-400" : "text-slate-500"}>
+                          {item.label}
+                        </span>
+                        <span className={`font-semibold font-mono text-right ${plan.highlight ? "text-white" : "text-slate-900"}`}>
+                          {item.val}
+                        </span>
+                      </div>
                     ))}
-                  </ul>
-                  <Link
-                    href={plan.href}
-                    className={`w-full text-center py-3.5 rounded-xl font-bold text-sm transition-all active:scale-95 ${
-                      plan.highlight
-                        ? "bg-[#0B6FFB] text-white shadow-md shadow-[#0B6FFB]/25 hover:bg-[#0958cc] shadow-lg"
-                        : "bg-slate-950 text-white hover:bg-slate-800 shadow"
-                    }`}
-                  >
-                    {plan.cta}
-                  </Link>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </section>
 
-        {/* Privacy Trust Bar */}
-        <section className="py-20 px-6">
-          <div className="max-w-4xl mx-auto bg-slate-950 rounded-3xl px-10 py-12 text-center text-white shadow-2xl">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <Lock className="w-6 h-6 text-[#0BB3FA]" />
-              <h2 className="text-3xl font-extrabold font-nunito">Your files. Your machine. Always.</h2>
-            </div>
-            <p className="text-white/70 max-w-2xl mx-auto text-base leading-relaxed mb-8">
-              Vimora processes everything locally using FFmpeg. We have no CDN, no file servers, no sneaky background uploads. Your media is as private as your hard drive.
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-8 text-sm text-white/80">
-              <span className="flex items-center gap-2">
-                <Globe className="w-4 h-4 text-[#0BB3FA]" /> Works fully offline
-              </span>
-              <span className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-[#0BB3FA]" /> Zero file uploads
-              </span>
-              <span className="flex items-center gap-2">
-                <Lock className="w-4 h-4 text-[#0BB3FA]" /> No cloud storage required
-              </span>
-            </div>
+                <Link
+                  href={plan.href}
+                  className={`w-full py-3 rounded-md text-xs font-bold text-center transition-colors ${
+                    plan.highlight
+                      ? "bg-[#0B6FFB] hover:bg-[#0958cc] text-white"
+                      : "bg-slate-900 hover:bg-slate-800 text-white"
+                  }`}
+                >
+                  {plan.cta}
+                </Link>
+              </div>
+            ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* Download Call to Action */}
-        <section className="py-24 px-6 text-center">
-          <div className="max-w-3xl mx-auto">
-            <h2 className="text-5xl font-extrabold text-slate-900 font-nunito mb-4">
-              Ready to convert faster?
-            </h2>
-            <p className="text-slate-600 text-lg mb-10">
-              Download Vimora for Windows and start converting in under 60 seconds.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link
-                href="/download"
-                className="inline-flex items-center gap-2 bg-slate-950 text-white text-[15px] font-bold px-8 py-4 rounded-2xl hover:bg-slate-800 shadow-xl transition-all active:scale-95"
-              >
-                <Download className="w-5 h-5 text-[#0BB3FA]" />
-                Download for Windows &bull; Free
-              </Link>
-              <Link
-                href="/converter"
-                className="inline-flex items-center gap-1.5 text-slate-700 font-semibold px-6 py-4 rounded-2xl hover:bg-black/5 transition-all text-sm"
-              >
-                Or use in browser <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-            <p className="text-slate-400 text-xs mt-5">Windows 10 / 11 &bull; 64-bit &bull; Hardware Accelerated</p>
-          </div>
-        </section>
-
-        {/* Footer */}
-        <footer className="border-t border-slate-900/10 py-10 px-6 bg-white/40 backdrop-blur-sm">
-          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-            <Link href="/" className="flex items-center gap-2 group">
-              <Logo size={24} textClassName="font-extrabold text-slate-900 font-nunito text-base" />
+      {/* Footer */}
+      <footer className="border-t border-slate-200 min-h-[400px] flex flex-col items-center justify-between px-6 bg-[#FAF9F6] py-16">
+        <div className="w-full max-w-4xl mx-auto flex flex-col items-center justify-between flex-1 gap-10 text-center">
+          {/* Top: Logo and Name */}
+          <div className="flex flex-col items-center justify-center pt-2">
+            <Link href="/" className="inline-flex items-center gap-3">
+              <Logo size={32} textClassName="font-extrabold text-slate-950 font-sans text-xl tracking-tight" />
             </Link>
-            <div className="flex flex-wrap gap-6 text-sm text-slate-600">
-              <a href="#features" className="hover:text-slate-900 transition-colors">Features</a>
-              <a href="#pricing" className="hover:text-slate-900 transition-colors">Pricing</a>
-              <a href="mailto:fawazadekanmbi19@gmail.com" className="hover:text-slate-900 transition-colors">Contact</a>
-              <Link href="/login" className="hover:text-slate-900 transition-colors">Sign In</Link>
-            </div>
-            <p className="text-xs text-slate-400">&copy; {new Date().getFullYear()} Vimora. All rights reserved.</p>
+            <p className="text-xs text-slate-500 mt-2 font-medium">
+              Local-First FFmpeg Transcoding Architecture
+            </p>
           </div>
-        </footer>
-      </div>
+
+          {/* Centre: Navigation Links */}
+          <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs sm:text-sm font-semibold text-slate-600">
+            <Link href="/converter" className="hover:text-slate-950 transition-colors">
+              Converter
+            </Link>
+            <Link href="/download" className="hover:text-slate-950 transition-colors">
+              Desktop Download
+            </Link>
+            <Link href="/pricing" className="hover:text-slate-950 transition-colors">
+              Pricing
+            </Link>
+            <Link href="/terms" className="hover:text-slate-950 transition-colors">
+              Terms of Service
+            </Link>
+            <Link href="/privacy" className="hover:text-slate-950 transition-colors">
+              Privacy Policy
+            </Link>
+          </div>
+
+          {/* Bottom: All Rights Reserved */}
+          <div className="text-center text-xs text-slate-400 font-medium pb-2">
+            <p>&copy; {new Date().getFullYear()} Vimora. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

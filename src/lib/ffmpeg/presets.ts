@@ -73,6 +73,7 @@ export const CREATOR_PRESETS: CreatorPreset[] = [
     audioBitrate: '160k',
     fps: 30,
     maintainAspect: true,
+    aspectRatioMode: 'crop_fill',
   },
   {
     id: 'twitter_x',

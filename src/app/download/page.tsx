@@ -12,7 +12,7 @@ export default function DownloadPage() {
   const { user, loading } = useAuth();
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
+    <div className="min-h-screen bg-[#FAF9F6] text-slate-900 font-sans flex flex-col">
       {/* Navigation */}
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">

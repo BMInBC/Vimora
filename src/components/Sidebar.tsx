@@ -5,16 +5,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/firebase/authContext";
 import { Logo } from "@/components/Logo";
-import { detectGpuCapabilities } from "@/lib/ffmpeg/detector";
-import { GpuCapabilities } from "@/lib/types";
 import {
   Sliders,
   LayoutDashboard,
   Crown,
   User as UserIcon,
   LogOut,
-  Sparkles,
-  Zap,
   Menu,
   X,
   ShieldAlert,
@@ -34,13 +30,8 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
   const router = useRouter();
   const { user, isPro, isAdmin, logout } = useAuth();
 
-  const [gpuCaps, setGpuCaps] = useState<GpuCapabilities | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-
-  useEffect(() => {
-    detectGpuCapabilities().then(setGpuCaps).catch(() => {});
-  }, []);
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -117,23 +108,13 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
               </button>
             </div>
           ) : (
-            /* Expanded Header: Logo alone with GPU badge and collapse toggle */
+            /* Expanded Header: Logo alone and collapse toggle */
             <>
               <Link href="/" className="flex items-center group shrink-0" title="Vimora Home">
                 <Logo size={30} priority />
               </Link>
 
-              <div className="hidden md:flex items-center gap-1.5">
-                {gpuCaps?.hasGpu && (
-                  <div
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[#0B6FFB] text-[10px] font-bold"
-                    title={gpuCaps.displayName}
-                  >
-                    <Zap className="w-3 h-3 fill-current shrink-0" />
-                    <span className="truncate max-w-[55px]">{gpuCaps.type.toUpperCase()}</span>
-                  </div>
-                )}
-
+              <div className="hidden md:flex items-center">
                 <button
                   type="button"
                   onClick={onToggleCollapse}
@@ -249,47 +230,8 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
         </div>
       </div>
 
-      {/* Bottom Section: Plan Status, Upgrade Button, User Card & Log Out */}
+      {/* Bottom Section: User Card & Log Out */}
       <div className="p-2.5 border-t border-slate-200/80 space-y-2 bg-slate-50/40">
-        {/* Upgrade Banner for Free Users (Expanded mode) */}
-        {!isPro && user && !collapsed && (
-          <div className="p-3 rounded-2xl bg-blue-50/80 border border-blue-200/80 space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-extrabold text-[#0B6FFB] flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5" />
-                Vimora Pro
-              </span>
-              <span className="text-[10px] font-bold text-slate-500">₦4,500/mo</span>
-            </div>
-            <p className="text-[11px] text-slate-600 leading-tight">
-              Unlock 4K UHD, NVENC GPU speed & unlimited batch queue.
-            </p>
-            <Link
-              href="/pricing"
-              className="flex items-center justify-center gap-1 w-full py-2 px-3 rounded-xl bg-[#0B6FFB] hover:bg-blue-600 text-white text-xs font-bold transition-all shadow-xs"
-            >
-              <span>Upgrade to Pro</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        )}
-
-        {/* Upgrade Quick Button (Collapsed mode) */}
-        {!isPro && user && collapsed && (
-          <div className="relative group flex justify-center">
-            <Link
-              href="/pricing"
-              className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-[#0B6FFB] hover:bg-[#0B6FFB] hover:text-white flex items-center justify-center transition-all"
-              title="Upgrade to Pro"
-            >
-              <Sparkles className="w-4 h-4" />
-            </Link>
-            <div className="fixed left-[76px] hidden group-hover:flex z-50 items-center px-2.5 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold whitespace-nowrap shadow-xl">
-              <span>Upgrade to Pro (₦4,500/mo)</span>
-            </div>
-          </div>
-        )}
-
         {/* User Card */}
         {user ? (
           <div

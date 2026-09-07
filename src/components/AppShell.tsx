@@ -51,7 +51,7 @@ export default function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-50/50">
+    <div className="min-h-screen flex bg-[#FAF9F6]">
       {/* Left side navigation bar */}
       <Sidebar
         isCollapsed={isCollapsed}

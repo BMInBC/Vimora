@@ -43,7 +43,7 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-cream-100 to-slate-100">
+      <div className="min-h-screen flex items-center justify-center bg-[#FAF9F6]">
         <div className="text-center">
           <CheckCircle2 className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
           <h2 className="text-2xl font-extrabold text-slate-900 font-nunito">Account Created!</h2>
@@ -58,7 +58,7 @@ export default function SignupPage() {
   const strengthColors = ['', 'bg-red-500', 'bg-[#0B6FFB]', 'bg-emerald-500'];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-cream-100 to-slate-100 flex items-center justify-center px-4 py-12">
+    <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-6 group">
