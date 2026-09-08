@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/firebase/authContext";
 import { Logo } from "@/components/Logo";
@@ -102,20 +101,9 @@ const PLANS = [
 ];
 
 export default function HomePage() {
-  const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [activeDemoTab, setActiveDemoTab] = useState<"queue" | "terminal">("queue");
-
-  useEffect(() => {
-    if (!authLoading) {
-      if (!user) {
-        router.replace("/login");
-      } else {
-        router.replace("/converter");
-      }
-    }
-  }, [user, authLoading, router]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -147,12 +135,21 @@ export default function HomePage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="text-xs font-semibold text-slate-700 hover:text-slate-900 px-3.5 py-2 rounded-md hover:bg-slate-100 transition-colors"
-            >
-              Sign In
-            </Link>
+            {user ? (
+              <Link
+                href="/converter"
+                className="text-xs font-semibold text-slate-700 hover:text-slate-900 px-3.5 py-2 rounded-md hover:bg-slate-100 transition-colors"
+              >
+                Launch App
+              </Link>
+            ) : (
+              <Link
+                href="/login"
+                className="text-xs font-semibold text-slate-700 hover:text-slate-900 px-3.5 py-2 rounded-md hover:bg-slate-100 transition-colors"
+              >
+                Sign In
+              </Link>
+            )}
             <Link
               href="/download"
               className="inline-flex items-center gap-1.5 bg-slate-950 text-white text-xs font-bold px-4 py-2 rounded-md hover:bg-slate-800 transition-colors"
