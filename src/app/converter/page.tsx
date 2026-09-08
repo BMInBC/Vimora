@@ -169,6 +169,7 @@ export default function ConverterPage() {
                 ...job.options,
                 outputFormat: preset.outputFormat,
                 presetId: preset.id,
+                quality: preset.quality || 'high',
                 videoCodec: preset.videoCodec,
                 audioCodec: preset.audioCodec,
                 resolution: preset.resolution,
@@ -252,7 +253,7 @@ export default function ConverterPage() {
       const options: ConversionOptions = {
         outputFormat: selectedFormat,
         presetId: selectedPreset.id,
-        quality: 'balanced',
+        quality: selectedPreset.quality || 'high',
         videoCodec: selectedPreset.videoCodec,
         audioCodec: selectedPreset.audioCodec,
         resolution: selectedPreset.resolution,

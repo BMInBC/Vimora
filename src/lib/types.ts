@@ -29,6 +29,7 @@ export interface CreatorPreset {
   audioSampleRate?: number;
   audioChannels?: 1 | 2;
   fps?: number;
+  quality?: QualityPreset;
   maintainAspect?: boolean;
   aspectRatioMode?: AspectRatioMode;
   normalizeAudio?: boolean;
@@ -41,7 +42,7 @@ export type AspectRatioMode = 'crop_fill' | 'blur_pad' | 'pad_black' | 'stretch'
 export interface ConversionOptions {
   outputFormat: OutputFormat;
   presetId?: string;
-  quality: QualityPreset;
+  quality?: QualityPreset;
   videoCodec?: VideoCodec;
   audioCodec?: AudioCodec;
   resolution?: string;

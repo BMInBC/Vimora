@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, error: 'No file provided in form data' }, { status: 400 });
       }
 
-      options = { outputFormat: 'mp4' };
+      options = { outputFormat: 'mp4', quality: 'high' };
       if (optionsRaw) {
         try {
           options = JSON.parse(optionsRaw);
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       }
       inputPath = body.inputPath || '';
       outputDirectory = body.outputDirectory || '';
-      options = body.options || { outputFormat: 'mp4' };
+      options = body.options || { outputFormat: 'mp4', quality: 'high' };
       customFileName = body.customFileName || '';
 
       if (!inputPath) {

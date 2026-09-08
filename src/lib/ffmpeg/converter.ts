@@ -66,7 +66,7 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
       args.push('-preset', 'medium');
     }
 
-    // Resolution & Aspect Ratio filter
+    // Resolution & Aspect Ratio filter with Lanczos scaling & BT.709 color matrix preservation
     if (options.resolution && options.videoCodec !== 'copy') {
       const parts = options.resolution.split('x');
       if (parts.length === 2) {
@@ -78,53 +78,71 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
             options.aspectRatioMode ||
             (isVerticalTarget ? 'crop_fill' : options.maintainAspect !== false ? 'pad_black' : 'stretch');
 
+          const scaleFlags = 'flags=lanczos+accurate_rnd';
+          const isHD = w >= 1280 || h >= 720;
+          const colorMatrix = isHD ? 'in_color_matrix=auto:out_color_matrix=bt709:' : '';
+
           if (mode === 'crop_fill') {
             // Fills frame completely (ideal for vertical TikTok / Reels / Shorts with 0 black bars)
-            args.push('-vf', `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`);
+            args.push('-vf', `scale=${w}:${h}:${colorMatrix}${scaleFlags}:force_original_aspect_ratio=increase,crop=${w}:${h}`);
           } else if (mode === 'blur_pad') {
             // Fills canvas with stylish blurred video background
             args.push(
               '-vf',
-              `split[fg][bg];[bg]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},boxblur=25:5[bgblur];[fg]scale=${w}:${h}:force_original_aspect_ratio=decrease[fgfit];[bgblur][fgfit]overlay=(W-w)/2:(H-h)/2`
+              `split[fg][bg];[bg]scale=${w}:${h}:${colorMatrix}${scaleFlags}:force_original_aspect_ratio=increase,crop=${w}:${h},boxblur=25:5[bgblur];[fg]scale=${w}:${h}:${colorMatrix}${scaleFlags}:force_original_aspect_ratio=decrease[fgfit];[bgblur][fgfit]overlay=(W-w)/2:(H-h)/2`
             );
           } else if (mode === 'stretch' || options.maintainAspect === false) {
-            args.push('-vf', `scale=${w}:${h}`);
+            args.push('-vf', `scale=${w}:${h}:${colorMatrix}${scaleFlags}`);
           } else {
             // pad_black: keep aspect ratio and pad with black borders
-            args.push('-vf', `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`);
+            args.push('-vf', `scale=${w}:${h}:${colorMatrix}${scaleFlags}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`);
           }
         }
       }
     }
 
-    // Framerate
+    // Framerate: Use -fpsmax to cap maximum framerate without duplicating source frames (preserves native 24fps / 30fps)
     if (options.fps && options.fps > 0) {
-      args.push('-r', options.fps.toString());
+      args.push('-fpsmax', options.fps.toString());
     }
 
-    // Video Bitrate
-    if (options.videoBitrate) {
-      args.push('-b:v', options.videoBitrate);
-    } else {
-      // Quality presets
-      if (options.quality === 'smaller') {
-        if (videoEncoder.includes('nvenc')) {
-          args.push('-cq', '28');
-        } else {
-          args.push('-crf', '28');
+    // Rate Control & Quality
+    if (videoEncoder !== 'copy') {
+      args.push('-pix_fmt', 'yuv420p');
+
+      // Tag BT.709 colorimetry for HD/UHD targets to prevent washed out colors
+      if (options.resolution) {
+        const parts = options.resolution.split('x');
+        if (parts.length === 2) {
+          const w = parseInt(parts[0], 10);
+          const h = parseInt(parts[1], 10);
+          if (w >= 1280 || h >= 720) {
+            args.push('-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv');
+          }
         }
-      } else if (options.quality === 'high') {
-        if (videoEncoder.includes('nvenc')) {
-          args.push('-cq', '19');
-        } else {
-          args.push('-crf', '18');
+      }
+
+      const isHigh = options.quality === 'high' || !options.quality;
+      const isSmaller = options.quality === 'smaller';
+
+      if (videoEncoder.includes('nvenc')) {
+        const cq = isSmaller ? '28' : isHigh ? '18' : '23';
+        args.push('-cq', cq);
+        if (options.videoBitrate) {
+          args.push('-b:v', options.videoBitrate, '-maxrate', options.videoBitrate);
         }
-      } else if (options.quality === 'balanced') {
-        if (videoEncoder.includes('nvenc')) {
-          args.push('-cq', '23');
-        } else {
-          args.push('-crf', '23');
+      } else if (videoEncoder === 'libx264' || videoEncoder === 'libx265') {
+        // High quality uses visually lossless CRF 17 for cinema-grade clarity
+        const crf = isSmaller ? '28' : isHigh ? '17' : '22';
+        args.push('-crf', crf);
+        if (options.videoBitrate) {
+          const num = parseInt(options.videoBitrate, 10);
+          const unit = options.videoBitrate.replace(/^[0-9.]+/, '') || 'M';
+          const buf = num ? `${num * 2}${unit}` : '32M';
+          args.push('-maxrate', options.videoBitrate, '-bufsize', buf);
         }
+      } else if (options.videoBitrate) {
+        args.push('-b:v', options.videoBitrate);
       }
     }
   }
