@@ -18,6 +18,8 @@ jobs:
         include:
           - platform: 'windows-latest'
             args: ''
+          - platform: 'macos-latest'
+            args: ''
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -33,7 +35,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || 'x86_64-pc-windows-msvc' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -53,7 +55,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Vimora Desktop v__VERSION__'
-          releaseBody: 'Automated release build of Vimora Desktop Application for Windows.'
+          releaseBody: 'Automated release build of Vimora Desktop Application for Windows and macOS.'
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}

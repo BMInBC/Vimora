@@ -54,7 +54,7 @@ try {
         if (retries === 0) {
           console.error("[build-export] Failed to restore src/app/api:", err);
         } else {
-          spawnSync("timeout", ["/t", "1"], { shell: true });
+          spawnSync(process.platform === "win32" ? "timeout" : "sleep", process.platform === "win32" ? ["/t", "1"] : ["1"], { shell: true });
         }
       }
     }
