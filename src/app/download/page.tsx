@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/lib/firebase/authContext";
 import { Logo } from "@/components/Logo";
@@ -10,6 +11,20 @@ import {
 
 export default function DownloadPage() {
   const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("auto") === "1" || params.get("download") === "true") {
+        const link = document.createElement("a");
+        link.href = "/downloads/Vimora_1.0.0_x64_en-US.msi";
+        link.download = "Vimora_1.0.0_x64_en-US.msi";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] text-slate-900 font-sans flex flex-col">
@@ -52,21 +67,27 @@ export default function DownloadPage() {
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
             <a
-              href="#download-options"
-              className="inline-flex items-center gap-3 bg-slate-950 hover:bg-slate-800 text-white font-bold px-8 py-4 rounded-2xl shadow-xl hover:shadow-2xl transition-all active:scale-95 text-base"
+              href="/downloads/Vimora_1.0.0_x64_en-US.msi"
+              download="Vimora_1.0.0_x64_en-US.msi"
+              className="inline-flex items-center gap-3 bg-slate-950 hover:bg-slate-800 text-white font-bold px-8 py-4 rounded-2xl shadow-xl hover:shadow-2xl transition-all active:scale-95 text-base cursor-pointer"
             >
               <Download className="w-5 h-5 text-[#0BB3FA]" />
               Download .msi Installer (64-bit)
             </a>
             <a
-              href="#portable"
-              className="inline-flex items-center gap-2 bg-white hover:bg-slate-100 text-slate-800 font-semibold px-6 py-4 rounded-2xl border border-slate-200 shadow-sm transition-all"
+              href="https://github.com/BMInBC/Vimora/raw/main/public/downloads/Vimora_1.0.0_x64_en-US.msi"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 bg-white hover:bg-slate-100 text-slate-800 font-semibold px-6 py-4 rounded-2xl border border-slate-200 shadow-sm transition-all text-sm"
+              title="Direct download mirror hosted on GitHub"
             >
-              <HardDrive className="w-4 h-4" />
-              Download Portable (.zip)
+              <HardDrive className="w-4 h-4 text-slate-600" />
+              GitHub Mirror (Direct)
             </a>
           </div>
-          <p className="text-xs text-slate-400 mt-3">Version 1.0.0 &bull; Windows 10 / 11 (x64) &bull; SHA-256 Verified</p>
+          <p className="text-xs text-slate-400 mt-3">
+            Version 1.0.0 &bull; Windows 10 / 11 (x64) &bull; 6.86 MB &bull; Microsoft Store certification in progress
+          </p>
         </div>
 
         {/* Benefits Grid */}

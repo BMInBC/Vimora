@@ -183,13 +183,14 @@ export default function HomePage() {
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-10">
-          <Link
-            href="/download"
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-slate-950 text-white text-xs font-bold px-6 py-3.5 rounded-md hover:bg-slate-800 transition-colors"
+          <a
+            href="/downloads/Vimora_1.0.0_x64_en-US.msi"
+            download="Vimora_1.0.0_x64_en-US.msi"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-slate-950 text-white text-xs font-bold px-6 py-3.5 rounded-md hover:bg-slate-800 transition-colors shadow-sm cursor-pointer"
           >
             <Download className="w-4 h-4 text-[#0B6FFB]" />
             Download for Windows (64-bit)
-          </Link>
+          </a>
           <Link
             href="/converter"
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white text-slate-900 text-xs font-bold px-6 py-3.5 rounded-md border border-slate-200 hover:bg-slate-50 transition-colors"
