@@ -101,9 +101,9 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
       }
     }
 
-    // Framerate: Use -fpsmax to cap maximum framerate without duplicating source frames (preserves native 24fps / 30fps)
+    // Framerate: enforce target fps (e.g. 60fps for YouTube Full HD)
     if (options.fps && options.fps > 0) {
-      args.push('-fpsmax', options.fps.toString());
+      args.push('-r', options.fps.toString());
     }
 
     // Rate Control & Quality

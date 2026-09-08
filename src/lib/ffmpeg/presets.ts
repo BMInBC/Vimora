@@ -10,7 +10,7 @@ export const CREATOR_PRESETS: CreatorPreset[] = [
     audioCodec: 'aac',
     quality: 'high',
     resolution: '1920x1080',
-    videoBitrate: '16M',
+    videoBitrate: '8M',
     audioBitrate: '320k',
     audioSampleRate: 48000,
     fps: 60,
