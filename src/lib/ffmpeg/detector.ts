@@ -79,7 +79,8 @@ export async function detectGpuCapabilities(): Promise<GpuCapabilities> {
 
   try {
     const res = await fetch('/api/gpu', { method: 'GET' });
-    if (res.ok) {
+    const contentType = res.headers.get('content-type') || '';
+    if (res.ok && contentType.includes('application/json')) {
       const data = await res.json();
       cachedCapabilities = data;
       return data;

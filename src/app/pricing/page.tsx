@@ -35,11 +35,20 @@ export default function PricingPage() {
         }),
       });
 
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(
+          res.status === 404
+            ? "Payment API endpoint not found on this server."
+            : `Server returned unexpected response (${res.status}).`
+        );
+      }
+
       const data = await res.json();
       if (data.status && data.data?.authorization_url) {
         window.location.href = data.data.authorization_url;
       } else {
-        setError(data.message || "Failed to initialize Paystack checkout");
+        setError(data.message || data.error || "Failed to initialize Paystack checkout");
       }
     } catch (err: any) {
       setError(err.message || "Network error. Please try again.");

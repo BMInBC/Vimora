@@ -399,7 +399,18 @@ export default function ConverterPage() {
         });
       }
 
-      const data = await res.json();
+      let data: any;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(
+          res.status === 404
+            ? 'Conversion server endpoint (/api/convert) was not found. Please ensure the server is running.'
+            : `Conversion failed: Server returned HTTP ${res.status}`
+        );
+      }
 
       if (!res.ok || !data.success) {
         if (data.aborted || controller.signal.aborted) {

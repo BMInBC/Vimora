@@ -27,6 +27,10 @@ function VerifyContent() {
     const checkTransaction = async () => {
       try {
         const res = await fetch(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`);
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          throw new Error(`Invalid response from verification server (${res.status})`);
+        }
         const data = await res.json();
 
         if (data.status && data.data?.status === "success") {

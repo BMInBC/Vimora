@@ -43,10 +43,17 @@ export async function POST(req: NextRequest) {
       customFileName = (formData.get('customFileName') as string) || '';
 
       if (!file) {
-        return NextResponse.json({ error: 'No file provided in form data' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'No file provided in form data' }, { status: 400 });
       }
 
-      options = optionsRaw ? JSON.parse(optionsRaw) : { outputFormat: 'mp4' };
+      options = { outputFormat: 'mp4' };
+      if (optionsRaw) {
+        try {
+          options = JSON.parse(optionsRaw);
+        } catch {
+          console.warn('[convert] optionsRaw was invalid JSON, using defaults');
+        }
+      }
 
       // Write uploaded file into a temporary local file for FFmpeg to process
       const stagingDir = path.join(os.tmpdir(), 'vimora_staging');
@@ -64,14 +71,19 @@ export async function POST(req: NextRequest) {
       inputPath = tempInputPath;
     } else {
       // JSON mode (Tauri desktop / direct path mode)
-      const body = await req.json();
-      inputPath = body.inputPath;
+      let body: any = {};
+      try {
+        body = await req.json();
+      } catch {
+        return NextResponse.json({ success: false, error: 'Invalid JSON body' }, { status: 400 });
+      }
+      inputPath = body.inputPath || '';
       outputDirectory = body.outputDirectory || '';
-      options = body.options;
+      options = body.options || { outputFormat: 'mp4' };
       customFileName = body.customFileName || '';
 
       if (!inputPath) {
-        return NextResponse.json({ error: 'inputPath is required' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'inputPath is required' }, { status: 400 });
       }
 
       // If inputPath is not an absolute existing path, search common user folders (Downloads, Videos, Documents)

@@ -2,10 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, amount, planCode, callbackUrl } = await req.json();
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ status: false, message: "Invalid JSON request body" }, { status: 400 });
+    }
+
+    const { email, amount, planCode, callbackUrl } = body || {};
 
     if (!email) {
-      return NextResponse.json({ error: "Email is required" }, { status: 400 });
+      return NextResponse.json({ status: false, message: "Email is required" }, { status: 400 });
     }
 
     const secretKey = process.env.PAYSTACK_SECRET_KEY;
@@ -46,9 +53,14 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    const data = await paystackRes.json();
+    let data: any;
+    try {
+      data = await paystackRes.json();
+    } catch {
+      data = { status: false, message: "Invalid response from payment gateway" };
+    }
     return NextResponse.json(data, { status: paystackRes.status });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Failed to initialize transaction" }, { status: 500 });
+    return NextResponse.json({ status: false, message: error.message || "Failed to initialize transaction" }, { status: 500 });
   }
 }
