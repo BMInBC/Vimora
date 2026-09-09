@@ -69,6 +69,9 @@ export interface MediaFileInfo {
   durationSeconds?: number;
   width?: number;
   height?: number;
+  fps?: number;
+  videoCodec?: string;
+  audioCodec?: string;
   hasVideo: boolean;
   hasAudio: boolean;
   lastModified?: number;

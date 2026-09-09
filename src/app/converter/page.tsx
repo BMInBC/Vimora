@@ -52,6 +52,47 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
+function getProcessingEngineMessage(isPro: boolean, gpuCaps: GpuCapabilities | null): string {
+  if (!isPro) {
+    return 'Processed 100% locally using CPU.';
+  }
+  if (gpuCaps?.hasGpu) {
+    switch (gpuCaps.type) {
+      case 'nvenc':
+        return 'Processed 100% locally using NVIDIA NVENC.';
+      case 'qsv':
+        return 'Processed 100% locally using Intel QuickSync.';
+      case 'amf':
+        return 'Processed 100% locally using AMD AMF.';
+      case 'videotoolbox':
+        return 'Processed 100% locally using Apple VideoToolbox.';
+    }
+  }
+  return 'Processed 100% locally using CPU fallback.';
+}
+
+function getHardwareStatusText(gpuCaps: GpuCapabilities | null, isPro: boolean): string {
+  if (!gpuCaps) {
+    return 'Detecting available hardware…';
+  }
+  if (!gpuCaps.hasGpu || gpuCaps.type === 'cpu') {
+    return 'Hardware acceleration not detected — CPU encoding available';
+  }
+  if (gpuCaps.type === 'videotoolbox') {
+    return isPro ? 'Apple VideoToolbox active' : 'Apple VideoToolbox available';
+  }
+  if (gpuCaps.type === 'nvenc') {
+    return isPro ? 'GPU detected: NVIDIA NVENC — NVENC active' : 'GPU detected: NVIDIA NVENC — NVENC available with Pro';
+  }
+  if (gpuCaps.type === 'qsv') {
+    return isPro ? 'GPU detected: Intel QuickSync — QuickSync active' : 'GPU detected: Intel QuickSync — QuickSync available with Pro';
+  }
+  if (gpuCaps.type === 'amf') {
+    return isPro ? 'GPU detected: AMD AMF — AMF active' : 'GPU detected: AMD AMF — AMF available with Pro';
+  }
+  return 'Hardware acceleration not detected — CPU encoding available';
+}
+
 export default function ConverterPage() {
   const { user, isPro, loading } = useAuth();
   const [jobs, setJobs] = useState<ConversionJob[]>([]);
@@ -324,6 +365,38 @@ export default function ConverterPage() {
           };
           a.onerror = () => URL.revokeObjectURL(objectUrl);
         }
+
+        // Try probing file metadata safely via /api/probe
+        const filePath = (file as any).path || file.name;
+        fetch('/api/probe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inputPath: filePath }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) {
+              setJobs((curr) =>
+                curr.map((j) =>
+                  j.file.id === fileId
+                    ? {
+                        ...j,
+                        file: {
+                          ...j.file,
+                          width: data.width || j.file.width,
+                          height: data.height || j.file.height,
+                          fps: data.fps || j.file.fps,
+                          videoCodec: data.videoCodec || j.file.videoCodec,
+                          audioCodec: data.audioCodec || j.file.audioCodec,
+                          durationSeconds: data.durationSeconds || j.file.durationSeconds,
+                        },
+                      }
+                    : j
+                )
+              );
+            }
+          })
+          .catch(() => {});
       }
     }
 
@@ -602,7 +675,7 @@ export default function ConverterPage() {
                 }`}
               >
                 <History className={`w-3.5 h-3.5 ${activeTab === 'history' ? 'text-[#0B6FFB]' : 'text-slate-400'}`} />
-                <span>Download History</span>
+                <span>Conversion History</span>
                 {history.length > 0 && (
                   <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px] font-bold">
                     {history.length}
@@ -637,14 +710,20 @@ export default function ConverterPage() {
                 Choose an optimized conversion preset for YouTube, TikTok, Instagram, X / Twitter, Discord, WhatsApp, or Studio Master.
               </p>
             </div>
-            {!isPro && (
-              <Link
-                href="/pricing"
-                className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#0B6FFB] hover:bg-[#0958cc] text-white px-3.5 py-2 rounded-md transition-colors shadow-xs self-start sm:self-auto"
-              >
-                <Lock className="w-3.5 h-3.5" /> Unlock 4K & GPU Presets
-              </Link>
-            )}
+            <div className="flex flex-col items-start sm:items-end gap-1.5 shrink-0">
+              {!isPro && (
+                <Link
+                  href="/pricing"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#0B6FFB] hover:bg-[#0958cc] text-white px-3.5 py-2 rounded-md transition-colors shadow-xs self-start sm:self-auto"
+                >
+                  <Lock className="w-3.5 h-3.5" /> Unlock 4K & GPU Presets
+                </Link>
+              )}
+              <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200/60">
+                <Cpu className="w-3 h-3 text-[#0B6FFB] shrink-0" />
+                {getHardwareStatusText(gpuCaps, isPro)}
+              </span>
+            </div>
           </div>
 
           {/* Preset Dropdown */}
@@ -750,23 +829,45 @@ export default function ConverterPage() {
                 })}
               </div>
             )}
-            {/* Quick Format Selector Pills */}
-            <div className="flex items-center gap-2 mt-4 pt-3.5 border-t border-slate-100 flex-wrap">
-              <span className="text-xs font-bold text-slate-500 shrink-0">Output Format:</span>
-              {(['mp4', 'webm', 'mov', 'mp3', 'wav', 'flac'] as OutputFormat[]).map((fmt) => (
-                <button
-                  key={fmt}
-                  type="button"
-                  onClick={() => handleFormatSelect(fmt)}
-                  className={`px-3 py-1 rounded-xl text-xs font-bold uppercase font-mono transition-all cursor-pointer ${
-                    selectedFormat === fmt
-                      ? 'bg-[#0B6FFB] text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
-                >
-                  {fmt}
-                </button>
-              ))}
+            {/* Quick Format Selector Pills (Grouped by Video & Audio Extraction) */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-4 pt-3.5 border-t border-slate-100 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-slate-500 shrink-0">Video:</span>
+                {(['mp4', 'webm', 'mov'] as OutputFormat[]).map((fmt) => (
+                  <button
+                    key={fmt}
+                    type="button"
+                    onClick={() => handleFormatSelect(fmt)}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold uppercase font-mono transition-all cursor-pointer ${
+                      selectedFormat === fmt
+                        ? 'bg-[#0B6FFB] text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {fmt}
+                  </button>
+                ))}
+              </div>
+
+              <div className="hidden sm:block text-slate-200">|</div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-slate-500 shrink-0">Audio Extraction:</span>
+                {(['mp3', 'wav', 'flac'] as OutputFormat[]).map((fmt) => (
+                  <button
+                    key={fmt}
+                    type="button"
+                    onClick={() => handleFormatSelect(fmt)}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold uppercase font-mono transition-all cursor-pointer ${
+                      selectedFormat === fmt
+                        ? 'bg-[#0B6FFB] text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {fmt}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* 9:16 Vertical Framing Controls */}
@@ -838,7 +939,9 @@ export default function ConverterPage() {
                   </span>
                 </div>
                 <p className="text-slate-600 text-[11px] leading-relaxed">
-                  {selectedPreset.id === 'tiktok_vertical' || selectedPreset.id === 'instagram_reel'
+                  {['mp3', 'wav', 'flac'].includes(selectedFormat)
+                    ? `Extracts high-quality ${selectedFormat.toUpperCase()} audio while preserving the original voice volume and vocal fidelity.`
+                    : selectedPreset.id === 'tiktok_vertical' || selectedPreset.id === 'instagram_reel'
                     ? 'Reframes horizontal or standard videos into full 9:16 vertical video (1080×1920) without black bars, tailored for TikTok, Reels, and Shorts.'
                     : selectedPreset.id === 'instagram_feed'
                     ? 'Reframes videos into full-screen 1:1 square canvas (1080×1080) for Instagram Feed posts without black letterboxing.'
@@ -876,13 +979,98 @@ export default function ConverterPage() {
             Drop your video or audio files here
           </h3>
           <p className="text-xs text-slate-500 mt-2 max-w-md mx-auto">
-            Targeting: <strong className="text-slate-800">{selectedPreset.name}</strong> ({selectedFormat.toUpperCase()}). Processed 100% locally via GPU.
+            Targeting: <strong className="text-slate-800">{selectedPreset.name}</strong> ({selectedFormat.toUpperCase()}). {getProcessingEngineMessage(isPro, gpuCaps)}
           </p>
           <div className="mt-4 inline-flex items-center gap-2 text-xs font-bold text-slate-700 bg-slate-100 px-4 py-2 rounded-xl">
             Click to Browse Files
           </div>
         </section>
 
+        {/* Compact Read-Only Conversion Summary */}
+        {jobs.length > 0 && (() => {
+          const sampleJob = jobs[0];
+          const file = sampleJob.file;
+          const isAudioTarget = ['mp3', 'wav', 'flac'].includes(selectedFormat);
+
+          const srcName = file.name || 'Unknown';
+          const srcSize = file.sizeBytes ? formatSize(file.sizeBytes) : 'Unknown';
+          const srcRes = file.width && file.height ? `${file.width}×${file.height}` : file.hasVideo ? 'Unknown' : 'N/A (Audio Only)';
+          const srcFps = file.fps ? `${file.fps} FPS` : file.hasVideo ? 'Unknown' : 'N/A (Audio Only)';
+          const srcVCodec = file.videoCodec ? file.videoCodec.toUpperCase() : file.hasVideo ? 'Unknown' : 'N/A (Audio Only)';
+          const srcACodec = file.audioCodec ? file.audioCodec.toUpperCase() : file.hasAudio ? 'Unknown' : 'N/A (No Audio Track)';
+
+          const targetFormat = `.${selectedFormat.toUpperCase()}`;
+          const targetRes = isAudioTarget ? 'N/A (Audio Only)' : selectedPreset.resolution || (file.width && file.height ? `${file.width}×${file.height}` : 'Source Resolution');
+          const targetFps = isAudioTarget ? 'N/A (Audio Only)' : selectedPreset.fps ? `${selectedPreset.fps} FPS` : (file.fps ? `${file.fps} FPS` : 'Source Frame Rate');
+
+          let targetEncoder = 'H.264 (libx264)';
+          if (isAudioTarget) {
+            targetEncoder = selectedFormat === 'mp3' ? 'MP3 (libmp3lame)' : selectedFormat === 'wav' ? 'PCM (pcm_s16le)' : 'FLAC Lossless';
+          } else if (gpuCaps?.hasGpu && isPro) {
+            if (gpuCaps.type === 'nvenc') targetEncoder = selectedPreset.videoCodec === 'hevc' ? 'HEVC (NVENC)' : 'H.264 (NVENC)';
+            else if (gpuCaps.type === 'qsv') targetEncoder = selectedPreset.videoCodec === 'hevc' ? 'HEVC (QuickSync)' : 'H.264 (QuickSync)';
+            else if (gpuCaps.type === 'amf') targetEncoder = selectedPreset.videoCodec === 'hevc' ? 'HEVC (AMF)' : 'H.264 (AMF)';
+            else if (gpuCaps.type === 'videotoolbox') targetEncoder = selectedPreset.videoCodec === 'hevc' ? 'HEVC (VideoToolbox)' : 'H.264 (VideoToolbox)';
+          } else {
+            targetEncoder = selectedPreset.videoCodec === 'hevc' ? 'HEVC (libx265)' : selectedPreset.videoCodec === 'vp9' ? 'VP9 (libvpx-vp9)' : 'H.264 (libx264)';
+          }
+
+          let framingMethod = 'N/A (Audio Only)';
+          if (!isAudioTarget) {
+            const activeFraming = selectedPreset.aspectRatioMode || framingMode;
+            if (activeFraming === 'crop_fill') framingMethod = 'Crop to Fill (0 Black Bars)';
+            else if (activeFraming === 'blur_pad') framingMethod = 'Blurred Background';
+            else if (activeFraming === 'stretch') framingMethod = 'Stretch to Fit';
+            else framingMethod = 'Letterbox (Black Bars)';
+          }
+
+          const audioSetting = 'Original Volume & Vocal Fidelity Preserved';
+
+          return (
+            <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="text-sm font-bold font-nunito text-slate-900 flex items-center gap-2">
+                  <FileCheck className="w-4 h-4 text-[#0B6FFB]" /> Conversion Summary
+                </h3>
+                <span className="text-[10px] font-mono uppercase text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full font-bold tracking-wider">
+                  Source vs Target
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                {/* Source File Overview */}
+                <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200/80 space-y-2">
+                  <p className="font-bold text-slate-900 flex items-center gap-1.5 uppercase text-[10px] tracking-wider font-mono text-slate-500 mb-1">
+                    <span>📥 Source File ({srcName})</span>
+                  </p>
+                  <div className="space-y-1.5 text-slate-700">
+                    <div className="flex justify-between border-b border-slate-200/50 pb-1"><span className="text-slate-500">Source Filename:</span><span className="font-semibold text-slate-900 truncate max-w-[200px]" title={srcName}>{srcName}</span></div>
+                    <div className="flex justify-between border-b border-slate-200/50 pb-1"><span className="text-slate-500">Source File Size:</span><span className="font-semibold">{srcSize}</span></div>
+                    <div className="flex justify-between border-b border-slate-200/50 pb-1"><span className="text-slate-500">Source Resolution:</span><span className="font-semibold">{srcRes}</span></div>
+                    <div className="flex justify-between border-b border-slate-200/50 pb-1"><span className="text-slate-500">Source Frame Rate:</span><span className="font-semibold">{srcFps}</span></div>
+                    <div className="flex justify-between border-b border-slate-200/50 pb-1"><span className="text-slate-500">Source Video Codec:</span><span className="font-semibold">{srcVCodec}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Source Audio Codec:</span><span className="font-semibold">{srcACodec}</span></div>
+                  </div>
+                </div>
+
+                {/* Target Planned Output */}
+                <div className="bg-blue-50/30 p-4 rounded-2xl border border-blue-100 space-y-2">
+                  <p className="font-bold text-slate-900 flex items-center gap-1.5 uppercase text-[10px] tracking-wider font-mono text-[#0B6FFB] mb-1">
+                    <span>🎯 Target Planned Output</span>
+                  </p>
+                  <div className="space-y-1.5 text-slate-700">
+                    <div className="flex justify-between border-b border-blue-100/60 pb-1"><span className="text-slate-500">Selected Format:</span><span className="font-bold text-[#0B6FFB]">{targetFormat}</span></div>
+                    <div className="flex justify-between border-b border-blue-100/60 pb-1"><span className="text-slate-500">Target Resolution:</span><span className="font-semibold">{targetRes}</span></div>
+                    <div className="flex justify-between border-b border-blue-100/60 pb-1"><span className="text-slate-500">Target Frame Rate:</span><span className="font-semibold">{targetFps}</span></div>
+                    <div className="flex justify-between border-b border-blue-100/60 pb-1"><span className="text-slate-500">Selected Encoder:</span><span className="font-semibold">{targetEncoder}</span></div>
+                    <div className="flex justify-between border-b border-blue-100/60 pb-1"><span className="text-slate-500">Framing Method:</span><span className="font-semibold">{framingMethod}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Audio Preservation:</span><span className="font-semibold text-emerald-700">{audioSetting}</span></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          );
+        })()}
 
         {/* Queue List */}
         {jobs.length > 0 && (
@@ -1405,7 +1593,7 @@ export default function ConverterPage() {
             <h3 className="text-lg font-bold font-nunito text-slate-900 mb-1">
               {historySearch || historyFormatFilter !== 'all'
                 ? 'No matching files found'
-                : 'Your download history is empty'}
+                : 'Your conversion history is empty'}
             </h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto mb-6">
               {historySearch || historyFormatFilter !== 'all'
