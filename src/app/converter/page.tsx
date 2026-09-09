@@ -178,7 +178,7 @@ export default function ConverterPage() {
                 audioBitrate: preset.audioBitrate,
                 audioSampleRate: preset.audioSampleRate,
                 audioChannels: preset.audioChannels,
-                normalizeAudio: preset.normalizeAudio ?? (['wav', 'mp3', 'flac', 'aac', 'ogg'].includes(preset.outputFormat)),
+                normalizeAudio: false,
                 maintainAspect: preset.maintainAspect,
                 aspectRatioMode: presetFraming,
               },
@@ -203,7 +203,7 @@ export default function ConverterPage() {
               options: {
                 ...job.options,
                 outputFormat: format,
-                normalizeAudio: ['wav', 'mp3', 'flac', 'aac', 'ogg'].includes(format),
+                normalizeAudio: false,
               },
             }
           : job
@@ -262,7 +262,7 @@ export default function ConverterPage() {
         audioBitrate: selectedPreset.audioBitrate,
         audioSampleRate: selectedPreset.audioSampleRate,
         audioChannels: selectedPreset.audioChannels,
-        normalizeAudio: selectedPreset.normalizeAudio ?? (['wav', 'mp3', 'flac', 'aac', 'ogg'].includes(selectedFormat)),
+        normalizeAudio: false,
         maintainAspect: selectedPreset.maintainAspect,
         aspectRatioMode: activeFraming,
         outputDirectory: outputDir,
@@ -842,7 +842,7 @@ export default function ConverterPage() {
                     ? 'Reframes horizontal or standard videos into full 9:16 vertical video (1080×1920) without black bars, tailored for TikTok, Reels, and Shorts.'
                     : selectedPreset.id === 'instagram_feed'
                     ? 'Reframes videos into full-screen 1:1 square canvas (1080×1080) for Instagram Feed posts without black letterboxing.'
-                    : `Encodes output as ${selectedPreset.outputFormat.toUpperCase()} at ${selectedPreset.resolution || 'source resolution'} with ${selectedPreset.videoCodec?.toUpperCase() || 'H264'} video and high-fidelity audio normalization.`}
+                    : `Encodes output as ${selectedPreset.outputFormat.toUpperCase()} at ${selectedPreset.resolution || 'source resolution'} with ${selectedPreset.videoCodec?.toUpperCase() || 'H264'} video while preserving original audio volume and vocal fidelity.`}
                 </p>
               </div>
             </div>

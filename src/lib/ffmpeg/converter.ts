@@ -166,6 +166,9 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
 
     if (options.audioBitrate && audioEncoder !== 'copy' && audioEncoder !== 'flac' && audioEncoder !== 'pcm_s16le') {
       args.push('-b:a', options.audioBitrate);
+    } else if (audioEncoder !== 'copy' && audioEncoder !== 'flac' && audioEncoder !== 'pcm_s16le') {
+      // Default to 256k high-fidelity bitrate to preserve rich vocal harmonics and audio fullness
+      args.push('-b:a', '256k');
     }
 
     if (options.audioSampleRate && audioEncoder !== 'copy') {
@@ -174,11 +177,6 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
 
     if (options.audioChannels && audioEncoder !== 'copy') {
       args.push('-ac', options.audioChannels.toString());
-    }
-
-    const shouldNormalize = options.normalizeAudio === true || (isAudioOnly && options.normalizeAudio !== false);
-    if (shouldNormalize && audioEncoder !== 'copy') {
-      args.push('-af', 'loudnorm=I=-16:TP=-1.5:LRA=11');
     }
   }
 

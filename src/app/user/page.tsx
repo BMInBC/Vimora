@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 
 export default function UserProfilePage() {
-  const { user, loading, isPro, isAdmin, logout, sendPasswordReset, resendVerificationEmail } = useAuth();
+  const { user, loading, isPro, isAdmin, logout, sendPasswordReset } = useAuth();
   const router = useRouter();
 
   // Settings & Local Stats
@@ -45,7 +45,6 @@ export default function UserProfilePage() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isSendingReset, setIsSendingReset] = useState(false);
-  const [isResendingVerify, setIsResendingVerify] = useState(false);
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
   const [isSecurityOpen, setIsSecurityOpen] = useState(false);
 
@@ -94,26 +93,6 @@ export default function UserProfilePage() {
       });
     } finally {
       setIsSendingReset(false);
-    }
-  };
-
-  // Resend email verification
-  const handleResendVerification = async () => {
-    setIsResendingVerify(true);
-    setActionMessage(null);
-    try {
-      await resendVerificationEmail();
-      setActionMessage({
-        type: 'success',
-        text: 'Verification link sent! Check your email inbox.',
-      });
-    } catch (err: any) {
-      setActionMessage({
-        type: 'error',
-        text: err.message || 'Failed to send verification email.',
-      });
-    } finally {
-      setIsResendingVerify(false);
     }
   };
 
@@ -320,25 +299,9 @@ export default function UserProfilePage() {
                   {user.email}
                 </span>
                 <span>•</span>
-                {user.emailVerified ? (
-                  <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold text-[11px]">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Verified
-                  </span>
-                ) : (
-                  <div className="inline-flex items-center gap-1.5">
-                    <span className="text-amber-600 font-semibold text-[11px] flex items-center gap-1">
-                      <AlertCircle className="w-3.5 h-3.5" /> Unverified
-                    </span>
-                    <button
-                      type="button"
-                      disabled={isResendingVerify}
-                      onClick={handleResendVerification}
-                      className="text-[10px] font-bold text-[#0B6FFB] hover:underline disabled:opacity-50 cursor-pointer"
-                    >
-                      {isResendingVerify ? "Sending..." : "Resend Link"}
-                    </button>
-                  </div>
-                )}
+                <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold text-[11px]">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Verified
+                </span>
               </div>
 
               <p className="text-[11px] text-slate-400 mt-1">

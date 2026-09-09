@@ -123,13 +123,13 @@ export function getPlannedChanges(
     });
   }
 
-  // 7. Audio Loudness Normalization
-  if (options.normalizeAudio || preset?.normalizeAudio) {
+  // 7. Audio Dynamics & Voice Preservation
+  if (options.keepAudio !== false) {
     changes.push({
-      id: 'audio_norm',
+      id: 'audio_voice',
       category: 'audio_norm',
-      title: 'Audio Normalization',
-      value: 'Balanced (-14 LUFS)',
+      title: 'Voice & Volume',
+      value: 'Original Level Preserved',
     });
   }
 

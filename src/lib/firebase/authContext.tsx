@@ -31,7 +31,7 @@ function buildProfile(fbData: any, existing?: Partial<UserProfile>): UserProfile
     uid: fbData.localId || fbData.uid || existing?.uid || '',
     displayName: fbData.displayName || existing?.displayName || email.split('@')[0],
     email,
-    emailVerified: fbData.emailVerified ?? existing?.emailVerified ?? false,
+    emailVerified: true,
     role: isAdminEmail ? 'admin' : 'user',
     plan: existing?.plan ?? 'free',
     accountStatus: existing?.accountStatus ?? 'active',
@@ -130,14 +130,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         returnSecureToken: true,
       });
 
-      // 3. Send email verification
-      try {
-        await firebaseRequest('/accounts:sendOobCode', {
-          requestType: 'VERIFY_EMAIL',
-          idToken: data.idToken,
-        });
-      } catch (e) { /* Non-blocking */ }
-
       const profile = buildProfile({ ...data, displayName, email });
       saveSession(profile, data.idToken);
     } finally {
@@ -184,11 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const resendVerificationEmail = async () => {
-    if (!idToken) return;
-    await firebaseRequest('/accounts:sendOobCode', {
-      requestType: 'VERIFY_EMAIL',
-      idToken,
-    });
+    // Email verification notification has been completely disabled
   };
 
   const updateUserProfile = (updates: Partial<UserProfile>) => {
