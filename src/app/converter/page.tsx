@@ -437,7 +437,7 @@ export default function ConverterPage() {
     setJobs((prev) =>
       prev.map((j) =>
         j.id === jobId
-          ? { ...j, status: 'converting', progress: { percent: 15, speed: '2.0x' }, startedAt: Date.now(), errorMessage: undefined }
+          ? { ...j, status: 'converting', progress: { percent: 1, speed: 'Preparing...' }, startedAt: Date.now(), errorMessage: undefined }
           : j
       )
     );
@@ -451,46 +451,119 @@ export default function ConverterPage() {
         const formData = new FormData();
         formData.append('file', rawFile);
         formData.append('options', JSON.stringify(job.options));
+        if (job.file.durationSeconds) {
+          formData.append('durationSeconds', job.file.durationSeconds.toString());
+        }
         if (job.options.outputDirectory) {
           formData.append('outputDirectory', job.options.outputDirectory);
         }
-        res = await fetch('/api/convert', {
+        res = await fetch('/api/convert?stream=true', {
           method: 'POST',
           body: formData,
+          headers: {
+            'Accept': 'application/x-ndjson',
+          },
           signal: controller.signal,
         });
       } else {
         // Desktop / absolute path mode
-        res = await fetch('/api/convert', {
+        res = await fetch('/api/convert?stream=true', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/x-ndjson',
+          },
           body: JSON.stringify({
             inputPath: job.file.path,
             outputDirectory: job.options.outputDirectory || undefined,
             options: job.options,
+            durationSeconds: job.file.durationSeconds,
           }),
           signal: controller.signal,
         });
       }
 
-      let data: any;
+      if (!res.ok) {
+        if (controller.signal.aborted) return;
+        const errText = await res.text();
+        throw new Error(errText || `Conversion failed: HTTP ${res.status}`);
+      }
+
+      let data: any = null;
       const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
+
+      if (contentType.includes('application/x-ndjson') && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let streamBuffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          streamBuffer += decoder.decode(value, { stream: true });
+          const lines = streamBuffer.split('\n');
+          streamBuffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            try {
+              const event = JSON.parse(trimmed);
+              if (event.type === 'progress') {
+                setJobs((prev) =>
+                  prev.map((j) =>
+                    j.id === jobId
+                      ? {
+                          ...j,
+                          progress: {
+                            percent: event.percent,
+                            speed: event.speed,
+                            currentFps: event.fps,
+                            currentTimeSeconds: event.currentTimeSeconds,
+                            totalTimeSeconds: event.totalTimeSeconds,
+                          },
+                        }
+                      : j
+                  )
+                );
+              } else if (event.type === 'stage') {
+                setJobs((prev) =>
+                  prev.map((j) =>
+                    j.id === jobId
+                      ? {
+                          ...j,
+                          progress: {
+                            ...j.progress,
+                            speed: event.stage === 'encoding' ? 'Encoding…' : event.stage,
+                          },
+                        }
+                      : j
+                  )
+                );
+              } else if (event.type === 'complete') {
+                data = event;
+              } else if (event.type === 'error') {
+                throw new Error(event.error || 'Conversion process failed');
+              } else if (event.type === 'aborted') {
+                return; // Handled by pauseJob
+              }
+            } catch (jsonErr: any) {
+              if (jsonErr.message && !jsonErr.message.includes('JSON')) {
+                throw jsonErr;
+              }
+            }
+          }
+        }
+      } else if (contentType.includes('application/json')) {
         data = await res.json();
       } else {
         const text = await res.text();
-        throw new Error(
-          res.status === 404
-            ? 'Conversion server endpoint (/api/convert) was not found. Please ensure the server is running.'
-            : `Conversion failed: Server returned HTTP ${res.status}`
-        );
+        throw new Error(`Conversion failed: Unexpected server response`);
       }
 
-      if (!res.ok || !data.success) {
-        if (data.aborted || controller.signal.aborted) {
-          return; // Handled by pauseJob
-        }
-        throw new Error(data.error || 'Conversion failed');
+      if (!data || !data.success) {
+        if (controller.signal.aborted) return;
+        throw new Error(data?.error || 'Conversion failed to produce output');
       }
 
       const completedJob: ConversionJob = {
@@ -1172,13 +1245,20 @@ export default function ConverterPage() {
                     <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
                       {job.status === 'converting' && (
                         <div className="flex items-center gap-3">
-                          <div className="w-28 sm:w-32 bg-slate-200 rounded-full h-2 overflow-hidden">
-                            <div
-                              className="bg-[#0B6FFB] h-full rounded-full transition-all duration-300 animate-pulse"
-                              style={{ width: `${job.progress.percent}%` }}
-                            />
+                          <div className="flex flex-col items-end gap-1">
+                            <div className="w-28 sm:w-36 bg-slate-200 rounded-full h-2 overflow-hidden">
+                              <div
+                                className="bg-[#0B6FFB] h-full rounded-full transition-all duration-300"
+                                style={{ width: `${Math.min(100, Math.max(2, job.progress.percent))}%` }}
+                              />
+                            </div>
+                            {job.progress.speed && (
+                              <span className="text-[10px] font-semibold text-slate-500 font-mono">
+                                {job.progress.speed}
+                              </span>
+                            )}
                           </div>
-                          <span className="text-xs font-bold text-slate-700 w-10 text-right">
+                          <span className="text-xs font-bold text-slate-800 w-10 text-right">
                             {job.progress.percent}%
                           </span>
                           <button
@@ -1515,8 +1595,8 @@ export default function ConverterPage() {
 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <p className="text-sm font-bold text-slate-900 truncate max-w-sm md:max-w-md">
-                        {item.originalFileName}
+                      <p className="text-sm font-bold text-slate-900 truncate max-w-sm md:max-w-md" title={item.outputPath ? item.outputPath.split(/[/\\]/).pop() : item.originalFileName}>
+                        {item.outputPath ? item.outputPath.split(/[/\\]/).pop() : item.originalFileName}
                       </p>
                       <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] uppercase bg-slate-100 text-slate-700 border border-slate-200">
                         {item.outputFormat}
@@ -1532,6 +1612,12 @@ export default function ConverterPage() {
                       {item.presetUsed && (
                         <>
                           <span className="font-medium text-slate-700">{item.presetUsed}</span>
+                          <span>&bull;</span>
+                        </>
+                      )}
+                      {item.outputPath && item.originalFileName !== item.outputPath.split(/[/\\]/).pop() && (
+                        <>
+                          <span className="text-slate-500">source: <span className="text-slate-700 font-medium">{item.originalFileName}</span></span>
                           <span>&bull;</span>
                         </>
                       )}

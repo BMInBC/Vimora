@@ -14,7 +14,7 @@ export default function Navbar() {
     <header className="sticky top-0 z-50 w-full backdrop-blur-md bg-white/70 border-b border-slate-900/5 transition-all">
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
         {/* Brand */}
-        <Link href="/" className="flex items-center gap-2.5 group">
+        <Link href={user ? '/dashboard' : '/'} className="flex items-center gap-2.5 group" title={user ? 'Vimora Dashboard' : 'Vimora Home'}>
           <Logo size={28} priority />
           <span className="text-[10px] font-semibold tracking-wider uppercase px-2 py-0.5 rounded-full bg-[#0B6FFB]/10 text-[#0B6FFB] border border-[#0B6FFB]/20 font-bold">
             GPU Active

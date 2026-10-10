@@ -88,9 +88,9 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
             /* Collapsed Header: Logo on top, 'Vimora' name centered just below, followed by expand button */
             <div className="flex flex-col items-center justify-center w-full gap-2">
               <Link
-                href="/"
+                href="/dashboard"
                 className="flex flex-col items-center justify-center group cursor-pointer"
-                title="Vimora Home"
+                title="Vimora Dashboard"
               >
                 <Logo size={26} priority iconOnly />
                 <span className="text-[11px] font-black font-nunito tracking-tight text-slate-900 group-hover:text-[#0B6FFB] transition-colors mt-1.5 text-center leading-none">
@@ -110,7 +110,7 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
           ) : (
             /* Expanded Header: Logo alone and collapse toggle */
             <>
-              <Link href="/" className="flex items-center group shrink-0" title="Vimora Home">
+              <Link href="/dashboard" className="flex items-center group shrink-0" title="Vimora Dashboard">
                 <Logo size={30} priority />
               </Link>
 
@@ -359,7 +359,7 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
           >
             <Menu className="w-5 h-5" />
           </button>
-          <Link href="/" className="flex items-center gap-2">
+          <Link href="/dashboard" className="flex items-center gap-2" title="Vimora Dashboard">
             <Logo size={26} priority iconOnly />
             <span className="text-base font-black font-nunito tracking-tight text-slate-900">
               Vimora

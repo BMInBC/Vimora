@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { buildSafeFfmpegArgs } from '@/lib/ffmpeg/converter';
 import { ConversionOptions } from '@/lib/types';
-
-const execFileAsync = promisify(execFile);
 
 export function getFfmpegBinary(): string {
   const candidates = [
@@ -26,6 +23,9 @@ export function getFfmpegBinary(): string {
 export async function POST(req: NextRequest) {
   let tempInputPath: string | null = null;
   let outputPath = '';
+  const url = new URL(req.url);
+  const wantsStream = url.searchParams.get('stream') === 'true' || 
+    (req.headers.get('accept') || '').includes('application/x-ndjson');
 
   try {
     const contentType = req.headers.get('content-type') || '';
@@ -33,6 +33,8 @@ export async function POST(req: NextRequest) {
     let outputDirectory = '';
     let options: ConversionOptions;
     let customFileName = '';
+    let originalBaseName = '';
+    let clientDurationSeconds = 0;
 
     if (contentType.includes('multipart/form-data')) {
       // Browser file upload mode (local staging on disk)
@@ -41,6 +43,10 @@ export async function POST(req: NextRequest) {
       const optionsRaw = formData.get('options') as string | null;
       outputDirectory = (formData.get('outputDirectory') as string) || '';
       customFileName = (formData.get('customFileName') as string) || '';
+      const durStr = formData.get('durationSeconds') as string | null;
+      if (durStr) {
+        clientDurationSeconds = parseFloat(durStr) || 0;
+      }
 
       if (!file) {
         return NextResponse.json({ success: false, error: 'No file provided in form data' }, { status: 400 });
@@ -61,9 +67,10 @@ export async function POST(req: NextRequest) {
         fs.mkdirSync(stagingDir, { recursive: true });
       }
 
+      originalBaseName = path.parse(file.name).name.replace(/_converted$/, '');
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
       tempInputPath = path.join(stagingDir, `${Date.now()}_${safeName}`);
-      
+
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
       fs.writeFileSync(tempInputPath, buffer);
@@ -81,12 +88,12 @@ export async function POST(req: NextRequest) {
       outputDirectory = body.outputDirectory || '';
       options = body.options || { outputFormat: 'mp4', quality: 'high' };
       customFileName = body.customFileName || '';
+      clientDurationSeconds = typeof body.durationSeconds === 'number' ? body.durationSeconds : 0;
 
       if (!inputPath) {
         return NextResponse.json({ success: false, error: 'inputPath is required' }, { status: 400 });
       }
 
-      // If inputPath is not an absolute existing path, search common user folders (Downloads, Videos, Documents)
       if (!fs.existsSync(inputPath)) {
         const userHome = os.homedir();
         const searchLocations = [
@@ -116,16 +123,16 @@ export async function POST(req: NextRequest) {
           );
         }
       }
+      originalBaseName = path.parse(inputPath).name.replace(/_converted$/, '');
     }
 
     const ffmpegBin = getFfmpegBinary();
     const parsedInput = path.parse(inputPath);
-    
-    // Choose output directory: specified output dir, or original folder, or User Videos/Downloads
+
+    // Choose output directory
     let outDir = outputDirectory && fs.existsSync(outputDirectory) ? outputDirectory : '';
     if (!outDir) {
       if (tempInputPath) {
-        // In browser upload mode, save converted file to user's Downloads or staging output
         outDir = path.join(os.homedir(), 'Downloads');
         if (!fs.existsSync(outDir)) {
           outDir = path.join(os.tmpdir(), 'vimora_staging');
@@ -135,76 +142,256 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const baseName = customFileName || `${parsedInput.name.replace(/_converted$/, '')}_converted`;
+    const baseName = customFileName || `${originalBaseName || 'converted'}_converted`;
     outputPath = path.join(outDir, `${baseName}.${options.outputFormat}`);
 
+    // Avoid overwriting existing files by appending counter if needed
+    let counter = 1;
+    while (fs.existsSync(outputPath)) {
+      outputPath = path.join(outDir, `${baseName} (${counter}).${options.outputFormat}`);
+      counter++;
+    }
+
     // Build safe argument array
-    const args = buildSafeFfmpegArgs({
+    const rawArgs = buildSafeFfmpegArgs({
       inputPath,
       outputPath,
       options,
       enableGpu: true,
     });
 
+    // Insert -progress pipe:1 before outputPath
+    const outIdx = rawArgs.length - 1;
+    const args = [
+      ...rawArgs.slice(0, outIdx),
+      '-progress', 'pipe:1',
+      rawArgs[outIdx]
+    ];
+
     const startTime = Date.now();
 
-    const child = await execFileAsync(ffmpegBin, args, {
-      maxBuffer: 20 * 1024 * 1024,
-      timeout: 600000, // 10 min
-      signal: req.signal,
-    });
+    // If streaming progress is requested (NDJSON stream)
+    if (wantsStream) {
+      const stream = new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder();
+          const sendLine = (obj: any) => {
+            try {
+              controller.enqueue(encoder.encode(JSON.stringify(obj) + '\n'));
+            } catch {}
+          };
 
-    const elapsedSeconds = (Date.now() - startTime) / 1000;
-    const stats = fs.existsSync(outputPath) ? fs.statSync(outputPath) : null;
+          // Initial stage notification
+          sendLine({ type: 'stage', stage: 'encoding', message: 'Starting FFmpeg encoding' });
 
-    // Clean up temporary staged input file
-    if (tempInputPath && fs.existsSync(tempInputPath)) {
-      try {
-        fs.unlinkSync(tempInputPath);
-      } catch {}
+          const child = spawn(ffmpegBin, args);
+          let totalDuration = clientDurationSeconds > 0 ? clientDurationSeconds : 0;
+          let currentPercent = 1;
+          let currentSpeed = '1.0x';
+          let currentFps = 0;
+          let lastStderr = '';
+
+          // Handle abort
+          const onAbort = () => {
+            try {
+              child.kill('SIGKILL');
+            } catch {}
+            if (tempInputPath && fs.existsSync(tempInputPath)) {
+              try { fs.unlinkSync(tempInputPath); } catch {}
+            }
+            if (outputPath && fs.existsSync(outputPath)) {
+              try { fs.unlinkSync(outputPath); } catch {}
+            }
+            sendLine({ type: 'aborted', message: 'Conversion cancelled' });
+            try { controller.close(); } catch {}
+          };
+
+          if (req.signal.aborted) {
+            onAbort();
+            return;
+          }
+          req.signal.addEventListener('abort', onAbort);
+
+          // Read stderr for total duration and error messages
+          child.stderr.on('data', (chunk: Buffer) => {
+            const str = chunk.toString();
+            lastStderr = str.slice(-1000);
+            if (!totalDuration) {
+              const match = str.match(/Duration:\s*(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)/);
+              if (match) {
+                const h = parseFloat(match[1]);
+                const m = parseFloat(match[2]);
+                const s = parseFloat(match[3]);
+                totalDuration = h * 3600 + m * 60 + s;
+              }
+            }
+          });
+
+          // Read stdout for -progress pipe:1 key-values
+          let stdoutBuf = '';
+          child.stdout.on('data', (chunk: Buffer) => {
+            stdoutBuf += chunk.toString();
+            const lines = stdoutBuf.split('\n');
+            stdoutBuf = lines.pop() || '';
+
+            let hasNewProgress = false;
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith('out_time_us=')) {
+                const us = parseInt(trimmed.substring(12), 10);
+                if (!isNaN(us)) {
+                  const curSec = us / 1000000;
+                  if (totalDuration > 0) {
+                    currentPercent = Math.min(99, Math.max(1, Math.round((curSec / totalDuration) * 100)));
+                  } else {
+                    currentPercent = Math.min(95, currentPercent + 1);
+                  }
+                  hasNewProgress = true;
+                }
+              } else if (trimmed.startsWith('speed=')) {
+                const spd = trimmed.substring(6).trim();
+                if (spd && spd !== 'N/A') {
+                  currentSpeed = spd;
+                }
+              } else if (trimmed.startsWith('fps=')) {
+                const f = parseFloat(trimmed.substring(4).trim());
+                if (!isNaN(f) && f > 0) {
+                  currentFps = Math.round(f);
+                }
+              }
+            }
+
+            if (hasNewProgress) {
+              sendLine({
+                type: 'progress',
+                percent: currentPercent,
+                speed: currentSpeed,
+                fps: currentFps,
+              });
+            }
+          });
+
+          child.on('close', (code) => {
+            req.signal.removeEventListener('abort', onAbort);
+
+            // Clean up temporary staged input
+            if (tempInputPath && fs.existsSync(tempInputPath)) {
+              try { fs.unlinkSync(tempInputPath); } catch {}
+            }
+
+            if (code === 0 && fs.existsSync(outputPath)) {
+              const elapsedSeconds = (Date.now() - startTime) / 1000;
+              const stats = fs.statSync(outputPath);
+              sendLine({
+                type: 'complete',
+                success: true,
+                outputPath,
+                fileName: path.basename(outputPath),
+                outputSizeBytes: stats.size,
+                durationSeconds: elapsedSeconds,
+                downloadUrl: `/api/download?path=${encodeURIComponent(outputPath)}`,
+              });
+            } else {
+              sendLine({
+                type: 'error',
+                success: false,
+                error: lastStderr || `FFmpeg process exited with code ${code}`,
+              });
+            }
+
+            try {
+              controller.close();
+            } catch {}
+          });
+
+          child.on('error', (err) => {
+            req.signal.removeEventListener('abort', onAbort);
+            if (tempInputPath && fs.existsSync(tempInputPath)) {
+              try { fs.unlinkSync(tempInputPath); } catch {}
+            }
+            sendLine({ type: 'error', success: false, error: err.message });
+            try { controller.close(); } catch {}
+          });
+        }
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'application/x-ndjson; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          'Connection': 'keep-alive',
+        },
+      });
     }
 
-    return NextResponse.json({
-      success: true,
-      outputPath,
-      fileName: path.basename(outputPath),
-      outputSizeBytes: stats?.size || 0,
-      durationSeconds: elapsedSeconds,
-      downloadUrl: `/api/download?path=${encodeURIComponent(outputPath)}`,
-      stdout: child.stdout?.substring(0, 500),
+    // Fallback: non-streaming execution
+    return await new Promise<NextResponse>((resolve) => {
+      const child = spawn(ffmpegBin, args);
+      let stderrOut = '';
+
+      child.stderr.on('data', (d) => { stderrOut += d.toString(); });
+
+      const onAbort = () => {
+        try { child.kill('SIGKILL'); } catch {}
+        if (tempInputPath && fs.existsSync(tempInputPath)) {
+          try { fs.unlinkSync(tempInputPath); } catch {}
+        }
+        if (outputPath && fs.existsSync(outputPath)) {
+          try { fs.unlinkSync(outputPath); } catch {}
+        }
+        resolve(NextResponse.json({ success: false, aborted: true, error: 'Conversion aborted' }, { status: 499 }));
+      };
+
+      if (req.signal.aborted) {
+        onAbort();
+        return;
+      }
+      req.signal.addEventListener('abort', onAbort);
+
+      child.on('close', (code) => {
+        req.signal.removeEventListener('abort', onAbort);
+        if (tempInputPath && fs.existsSync(tempInputPath)) {
+          try { fs.unlinkSync(tempInputPath); } catch {}
+        }
+
+        if (code === 0 && fs.existsSync(outputPath)) {
+          const stats = fs.statSync(outputPath);
+          resolve(NextResponse.json({
+            success: true,
+            outputPath,
+            fileName: path.basename(outputPath),
+            outputSizeBytes: stats.size,
+            durationSeconds: (Date.now() - startTime) / 1000,
+            downloadUrl: `/api/download?path=${encodeURIComponent(outputPath)}`,
+          }));
+        } else {
+          resolve(NextResponse.json({
+            success: false,
+            error: stderrOut || `FFmpeg process exited with code ${code}`,
+          }, { status: 500 }));
+        }
+      });
+
+      child.on('error', (err) => {
+        req.signal.removeEventListener('abort', onAbort);
+        if (tempInputPath && fs.existsSync(tempInputPath)) {
+          try { fs.unlinkSync(tempInputPath); } catch {}
+        }
+        resolve(NextResponse.json({ success: false, error: err.message }, { status: 500 }));
+      });
     });
+
   } catch (err: any) {
-    // Clean up temporary staging file on failure or abort
     if (tempInputPath && fs.existsSync(tempInputPath)) {
-      try {
-        fs.unlinkSync(tempInputPath);
-      } catch {}
+      try { fs.unlinkSync(tempInputPath); } catch {}
     }
-
-    // If request was aborted by client (pause / cancel), delete partial output
     if (req.signal.aborted || err.name === 'AbortError') {
       try {
-        if (outputPath && fs.existsSync(outputPath)) {
-          fs.unlinkSync(outputPath);
-        }
+        if (outputPath && fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
       } catch {}
-      return NextResponse.json(
-        {
-          success: false,
-          aborted: true,
-          error: 'Conversion paused or cancelled by user.',
-        },
-        { status: 499 }
-      );
+      return NextResponse.json({ success: false, aborted: true, error: 'Cancelled' }, { status: 499 });
     }
-
     console.error('Conversion execution error:', err);
-    return NextResponse.json(
-      {
-        success: false,
-        error: err.stderr || err.message || 'Conversion failed',
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: err.message || 'Conversion failed' }, { status: 500 });
   }
 }

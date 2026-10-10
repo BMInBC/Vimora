@@ -25,7 +25,35 @@ export function getLocalHistory(userId?: string | null): LocalHistoryRecord[] {
   try {
     const key = getHistoryStorageKey(userId);
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : [];
+    let history: LocalHistoryRecord[] = raw ? JSON.parse(raw) : [];
+
+    // If a logged-in user is reading history, check if there are guest records to migrate/merge
+    if (userId && typeof userId === 'string' && userId.trim()) {
+      try {
+        const guestRaw = localStorage.getItem(DEFAULT_HISTORY_KEY);
+        if (guestRaw) {
+          const guestRecords: LocalHistoryRecord[] = JSON.parse(guestRaw);
+          if (Array.isArray(guestRecords) && guestRecords.length > 0) {
+            const existingIds = new Set(history.map((r) => r.id));
+            const newRecords = guestRecords
+              .filter((r) => !existingIds.has(r.id))
+              .map((r) => ({ ...r, userId: userId.trim() }));
+
+            if (newRecords.length > 0) {
+              history = [...newRecords, ...history].sort((a, b) => b.timestamp - a.timestamp);
+              if (history.length > 250) history.length = 250;
+              localStorage.setItem(key, JSON.stringify(history));
+            }
+            // Clear guest records now that they are safely linked to this user's account
+            localStorage.removeItem(DEFAULT_HISTORY_KEY);
+          }
+        }
+      } catch (migrateErr) {
+        console.warn('Failed migrating guest history:', migrateErr);
+      }
+    }
+
+    return history;
   } catch (err) {
     console.error('Failed reading local history:', err);
     return [];

@@ -122,7 +122,7 @@ export default function HomePage() {
         }`}
       >
         <div className="max-w-7xl mx-auto px-6 md:px-12 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
+          <Link href={user ? '/dashboard' : '/'} className="flex items-center gap-2 group" title={user ? 'Vimora Dashboard' : 'Vimora Home'}>
             <Logo size={28} priority />
           </Link>
 
@@ -500,7 +500,7 @@ export default function HomePage() {
         <div className="w-full max-w-4xl mx-auto flex flex-col items-center justify-between flex-1 gap-10 text-center">
           {/* Top: Logo and Name */}
           <div className="flex flex-col items-center justify-center pt-2">
-            <Link href="/" className="inline-flex items-center gap-3">
+            <Link href={user ? '/dashboard' : '/'} className="inline-flex items-center gap-3" title={user ? 'Vimora Dashboard' : 'Vimora Home'}>
               <Logo size={32} textClassName="font-extrabold text-slate-950 font-sans text-xl tracking-tight" />
             </Link>
             <p className="text-xs text-slate-500 mt-2 font-medium">
