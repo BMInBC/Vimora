@@ -55,7 +55,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Vimora Desktop v__VERSION__'
-          releaseBody: 'Automated release build of Vimora Desktop Application for Windows and macOS.'
-          releaseDraft: true
+          releaseBody: 'Official release build of Vimora Desktop Application for Windows (.msi / .exe) and macOS (.dmg / .app).'
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

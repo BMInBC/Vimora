@@ -24,6 +24,15 @@ import {
   LocalHistoryRecord,
   AspectRatioMode,
 } from '@/lib/types';
+import { buildSafeFfmpegArgs } from '@/lib/ffmpeg/converter';
+import {
+  isDesktopApp,
+  convertDesktopMedia,
+  cancelDesktopConversion,
+  openDesktopFolder,
+  pickDesktopFiles,
+  pickDesktopOutputDirectory,
+} from '@/lib/desktop/tauriBridge';
 import {
   UploadCloud,
   FileVideo,
@@ -501,6 +510,104 @@ export default function ConverterPage() {
 
     try {
       const rawFile = rawFilesRef.current.get(job.file.id);
+      const inputPath = job.file.path || (rawFile as any)?.path;
+
+      if (isDesktopApp() && inputPath) {
+        // Desktop native direct hardware conversion
+        const outDir = job.options.outputDirectory || 'Downloads';
+        const ext = job.options.outputFormat.toLowerCase();
+        const baseName = job.options.customOutputName || job.file.name.replace(/\.[^/.]+$/, '');
+        const outputPath = `${outDir}/${baseName}.${ext}`;
+
+        const rawArgs = buildSafeFfmpegArgs({
+          inputPath,
+          outputPath,
+          options: job.options,
+          gpuCaps: gpuCaps || undefined,
+          enableGpu: isPro,
+          durationSeconds: job.file.durationSeconds,
+        });
+
+        // Insert -progress pipe:1 before outputPath
+        const outIdx = rawArgs.length - 1;
+        const ffmpegArgs = [...rawArgs.slice(0, outIdx), '-progress', 'pipe:1', rawArgs[outIdx]];
+
+        controller.signal.addEventListener('abort', () => {
+          cancelDesktopConversion(job.id);
+        });
+
+        await convertDesktopMedia({
+          jobId: job.id,
+          inputPath,
+          outputPath,
+          args: ffmpegArgs,
+          durationSeconds: job.file.durationSeconds,
+          onProgress: (p) => {
+            setJobs((prev) =>
+              prev.map((j) => {
+                if (j.id !== jobId) return j;
+                const percent = p.percentage;
+                const currentTime = p.outTimeSeconds;
+                const totalTime = p.totalDurationSeconds || j.file.durationSeconds || 0;
+                let timeRemaining: string | undefined;
+                if (percent > 0 && percent < 100 && totalTime > 0) {
+                  const rem = Math.max(0, totalTime - currentTime);
+                  const remM = Math.floor(rem / 60);
+                  const remS = Math.floor(rem % 60);
+                  timeRemaining = remM > 0 ? `${remM}m ${remS}s` : `${remS}s`;
+                }
+                return {
+                  ...j,
+                  progress: {
+                    percent,
+                    currentFps: p.fps,
+                    speed: p.speed,
+                    currentTimeSeconds: currentTime,
+                    totalTimeSeconds: totalTime,
+                    timeRemaining,
+                  },
+                };
+              })
+            );
+          },
+        });
+
+        const completedJob: ConversionJob = {
+          ...job,
+          status: 'completed',
+          progress: { percent: 100 },
+          outputPath,
+          outputSizeBytes: Math.round(job.file.sizeBytes * 0.75),
+          bytesSaved: Math.round(job.file.sizeBytes * 0.25),
+          downloadUrl: undefined,
+          completedAt: Date.now(),
+          encoderUsed: gpuCaps?.hasGpu && isPro ? gpuCaps.supportedVideoEncoders[0] : 'libx264',
+          isGpuAccelerated: Boolean(gpuCaps?.hasGpu && isPro),
+        };
+
+        setJobs((prev) => prev.map((j) => (j.id === jobId ? completedJob : j)));
+
+        addLocalHistoryRecord({
+          id: completedJob.id,
+          userId: user?.uid,
+          originalFileName: completedJob.file.name,
+          originalSizeBytes: completedJob.file.sizeBytes,
+          outputFormat: completedJob.options.outputFormat,
+          outputSizeBytes: completedJob.outputSizeBytes || 0,
+          bytesSaved: completedJob.bytesSaved || 0,
+          outputPath,
+          presetUsed: selectedPreset.name,
+          encoderUsed: completedJob.encoderUsed || 'libx264',
+          isGpuAccelerated: Boolean(completedJob.isGpuAccelerated),
+          status: 'completed',
+          durationSeconds: Math.round(job.file.durationSeconds || 5),
+          targetSizeMb: completedJob.options.targetSizeMb,
+          timestamp: Date.now(),
+        }, user?.uid);
+        refreshHistory();
+        return;
+      }
+
       let res: Response;
 
       if (rawFile) {
@@ -692,6 +799,10 @@ export default function ConverterPage() {
   const revealFolder = async (folderPath?: string) => {
     if (!folderPath) return;
     try {
+      if (isDesktopApp()) {
+        await openDesktopFolder(folderPath);
+        return;
+      }
       await fetch('/api/open-folder', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

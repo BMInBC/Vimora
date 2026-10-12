@@ -56,37 +56,47 @@ export default function DownloadPage() {
       <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-16">
         <div className="text-center max-w-3xl mx-auto mb-12">
           <div className="inline-flex items-center gap-2 bg-[#0B6FFB]/10 text-[#0B6FFB] text-xs font-bold px-3.5 py-1.5 rounded-full mb-6">
-            <Monitor className="w-3.5 h-3.5" /> Official Windows Desktop Release (Tauri 2)
+            <Monitor className="w-3.5 h-3.5" /> Official Desktop Release (Tauri 2) &bull; Windows & macOS
           </div>
           <h1 className="text-4xl md:text-6xl font-extrabold font-nunito tracking-tight text-slate-950 mb-4">
-            Download Vimora for Windows
+            Download Vimora Desktop
           </h1>
           <p className="text-slate-600 text-base md:text-lg">
-            Harness full local hardware power. Native FFmpeg integration with direct NVENC, AMF, and QSV GPU acceleration.
+            Harness full local hardware power. Native private conversion with NVIDIA NVENC, AMD AMF, Intel QSV, and Apple VideoToolbox hardware acceleration.
           </p>
 
-          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4 flex-wrap">
             <a
-              href="/downloads/Vimora_1.0.0_x64_en-US.msi"
-              download="Vimora_1.0.0_x64_en-US.msi"
-              className="inline-flex items-center gap-3 bg-slate-950 hover:bg-slate-800 text-white font-bold px-8 py-4 rounded-2xl shadow-xl hover:shadow-2xl transition-all active:scale-95 text-base cursor-pointer"
+              href="https://github.com/BMInBC/Vimora/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-3 bg-slate-950 hover:bg-slate-800 text-white font-bold px-7 py-4 rounded-2xl shadow-xl hover:shadow-2xl transition-all active:scale-95 text-base cursor-pointer"
             >
               <Download className="w-5 h-5 text-[#0BB3FA]" />
-              Download .msi Installer (64-bit)
+              Windows Installer (.msi / .exe)
             </a>
             <a
-              href="https://github.com/BMInBC/Vimora/raw/main/public/downloads/Vimora_1.0.0_x64_en-US.msi"
+              href="https://github.com/BMInBC/Vimora/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-3 bg-[#0B6FFB] hover:bg-blue-600 text-white font-bold px-7 py-4 rounded-2xl shadow-xl hover:shadow-2xl transition-all active:scale-95 text-base cursor-pointer"
+            >
+              <Download className="w-5 h-5 text-white" />
+              macOS Installer (.dmg Universal)
+            </a>
+            <a
+              href="https://github.com/BMInBC/Vimora/releases"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 bg-white hover:bg-slate-100 text-slate-800 font-semibold px-6 py-4 rounded-2xl border border-slate-200 shadow-sm transition-all text-sm"
-              title="Direct download mirror hosted on GitHub"
+              title="All releases and platform binaries on GitHub"
             >
               <HardDrive className="w-4 h-4 text-slate-600" />
-              GitHub Mirror (Direct)
+              All Releases on GitHub
             </a>
           </div>
           <p className="text-xs text-slate-400 mt-3">
-            Version 1.0.0 &bull; Windows 10 / 11 (x64) &bull; 6.86 MB &bull; Microsoft Store certification in progress
+            Version 1.0.0 &bull; Windows 10/11 & macOS 11+ (Apple Silicon & Intel) &bull; 100% Offline & Private
           </p>
         </div>
 
@@ -131,18 +141,20 @@ export default function DownloadPage() {
             <div className="space-y-3">
               <h3 className="font-bold text-slate-700">Minimum Requirements</h3>
               <ul className="space-y-2 text-slate-600">
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Windows 10 (Build 19041+) or Windows 11</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> 4 GB RAM (8 GB+ recommended for 4K)</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> <strong>Windows</strong>: Windows 10 (Build 19041+) or Windows 11 (64-bit)</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> <strong>macOS</strong>: macOS 11 Big Sur, Monterey, Ventura, Sonoma, or Sequoia</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> 4 GB RAM (8 GB+ recommended for 4K video)</li>
                 <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> 200 MB free storage for application</li>
               </ul>
             </div>
 
             <div className="space-y-3">
-              <h3 className="font-bold text-slate-700">GPU Acceleration Support</h3>
+              <h3 className="font-bold text-slate-700">Hardware Acceleration Support</h3>
               <ul className="space-y-2 text-slate-600">
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> <strong>NVIDIA</strong>: GTX 900 series or newer (NVENC)</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> <strong>AMD</strong>: Radeon RX 400 or newer (AMF)</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> <strong>Intel</strong>: Skylake 6th Gen Core or newer (QuickSync)</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> <strong>Apple Silicon</strong>: M1, M2, M3, M4 & Intel Macs (VideoToolbox)</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> <strong>NVIDIA</strong>: GTX 900 series, RTX 20/30/40/50 series (NVENC)</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> <strong>AMD</strong>: Radeon RX 400 or newer / RDNA (AMF)</li>
+                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> <strong>Intel</strong>: Skylake 6th Gen Core or newer / Intel Arc (QuickSync)</li>
               </ul>
             </div>
           </div>
@@ -150,7 +162,7 @@ export default function DownloadPage() {
           <div className="pt-6 border-t border-slate-100 flex items-start gap-3 bg-blue-50/50 p-4 rounded-xl border border-blue-200/60">
             <Terminal className="w-5 h-5 text-[#0B6FFB] shrink-0 mt-0.5" />
             <div className="text-xs text-slate-700 leading-relaxed">
-              <strong>FFmpeg Engine:</strong> Vimora communicates directly with FFmpeg. On Windows systems where FFmpeg is installed in PATH, Vimora instantly auto-detects hardware acceleration profiles.
+              <strong>FFmpeg Engine:</strong> Vimora communicates directly with FFmpeg. On Windows and macOS systems, Vimora auto-detects FFmpeg in standard installation paths or PATH (e.g. WinGet on Windows, Homebrew on macOS) and unlocks maximum hardware acceleration.
             </div>
           </div>
         </div>

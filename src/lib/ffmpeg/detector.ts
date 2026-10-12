@@ -77,6 +77,20 @@ export async function detectGpuCapabilities(): Promise<GpuCapabilities> {
     return cachedCapabilities;
   }
 
+  // If running inside Tauri desktop app, use native hardware detection
+  try {
+    const { isDesktopApp, getDesktopGpuCaps } = await import('../desktop/tauriBridge');
+    if (isDesktopApp()) {
+      const desktopCaps = await getDesktopGpuCaps();
+      if (desktopCaps) {
+        cachedCapabilities = desktopCaps;
+        return desktopCaps;
+      }
+    }
+  } catch (err) {
+    console.warn('[detector] Desktop GPU detection failed:', err);
+  }
+
   try {
     const res = await fetch('/api/gpu', { method: 'GET' });
     const contentType = res.headers.get('content-type') || '';
