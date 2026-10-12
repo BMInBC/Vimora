@@ -58,6 +58,8 @@ export interface ConversionOptions {
   aspectRatioMode?: AspectRatioMode;
   customOutputName?: string;
   outputDirectory?: string;
+  targetSizeMb?: number;
+  sizeLimitPreset?: 'auto' | 'discord' | 'whatsapp' | 'email' | 'social' | 'custom';
 }
 
 export interface MediaFileInfo {
@@ -121,6 +123,7 @@ export interface LocalHistoryRecord {
   status: 'completed' | 'failed';
   errorMessage?: string;
   durationSeconds: number;
+  targetSizeMb?: number;
   timestamp: number;
 }
 

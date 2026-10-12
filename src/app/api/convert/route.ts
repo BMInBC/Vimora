@@ -152,12 +152,33 @@ export async function POST(req: NextRequest) {
       counter++;
     }
 
+    // If clientDurationSeconds is not provided, quickly probe duration for accurate target size bitrate calculation
+    if (!clientDurationSeconds && fs.existsSync(inputPath)) {
+      try {
+        const probeProc = spawn(ffmpegBin, ['-hide_banner', '-i', inputPath]);
+        let probeStderr = '';
+        probeProc.stderr.on('data', (d) => { probeStderr += d.toString(); });
+        await new Promise((resolve) => {
+          probeProc.on('close', resolve);
+          setTimeout(resolve, 1500);
+        });
+        const dMatch = probeStderr.match(/Duration:\s*(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)/);
+        if (dMatch) {
+          const h = parseFloat(dMatch[1]);
+          const m = parseFloat(dMatch[2]);
+          const s = parseFloat(dMatch[3]);
+          clientDurationSeconds = h * 3600 + m * 60 + s;
+        }
+      } catch {}
+    }
+
     // Build safe argument array
     const rawArgs = buildSafeFfmpegArgs({
       inputPath,
       outputPath,
       options,
       enableGpu: true,
+      durationSeconds: clientDurationSeconds,
     });
 
     // Insert -progress pipe:1 before outputPath

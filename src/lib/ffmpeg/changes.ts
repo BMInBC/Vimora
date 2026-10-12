@@ -133,7 +133,17 @@ export function getPlannedChanges(
     });
   }
 
-  // 8. GPU Acceleration
+  // 8. Target File Size Limit
+  if (options.targetSizeMb && options.targetSizeMb > 0) {
+    changes.push({
+      id: 'target_size',
+      category: 'size',
+      title: 'Target File Size',
+      value: `≤ ${options.targetSizeMb} MB`,
+    });
+  }
+
+  // 9. GPU Acceleration
   if (gpuCaps?.hasGpu && isPro) {
     changes.push({
       id: 'gpu',

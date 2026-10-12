@@ -6,10 +6,11 @@ export interface BuildArgsParams {
   options: ConversionOptions;
   gpuCaps?: GpuCapabilities;
   enableGpu?: boolean;
+  durationSeconds?: number;
 }
 
 export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
-  const { inputPath, outputPath, options, gpuCaps, enableGpu = true } = params;
+  const { inputPath, outputPath, options, gpuCaps, enableGpu = true, durationSeconds } = params;
 
   if (!inputPath || typeof inputPath !== 'string') {
     throw new Error('Invalid input path');
@@ -25,6 +26,37 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
 
   const format = options.outputFormat.toLowerCase() as OutputFormat;
   const isAudioOnly = ['mp3', 'wav', 'aac', 'flac', 'ogg'].includes(format);
+
+  const hasTargetSize = typeof options.targetSizeMb === 'number' && options.targetSizeMb > 0;
+  let calculatedVideoBitrateKbps: number | null = null;
+  let calculatedAudioBitrateKbps: number | null = null;
+
+  if (hasTargetSize) {
+    const targetMb = options.targetSizeMb!;
+    const dur = durationSeconds && durationSeconds > 0 ? durationSeconds : 0;
+
+    if (dur > 0) {
+      // 94% safe budget to account for container muxing, moov atom, and VBR packet fluctuations
+      const safeBudgetBits = targetMb * 1024 * 1024 * 8 * 0.94;
+      const totalBitrateKbps = Math.floor((safeBudgetBits / dur) / 1000);
+
+      if (isAudioOnly) {
+        calculatedAudioBitrateKbps = Math.min(320, Math.max(32, totalBitrateKbps));
+      } else {
+        // Allocate audio bitrate smartly based on overall budget
+        let audioK = 192;
+        if (totalBitrateKbps < 180) {
+          audioK = 64;
+        } else if (totalBitrateKbps < 360) {
+          audioK = 96;
+        } else if (totalBitrateKbps < 750) {
+          audioK = 128;
+        }
+        calculatedAudioBitrateKbps = audioK;
+        calculatedVideoBitrateKbps = Math.max(50, totalBitrateKbps - audioK);
+      }
+    }
+  }
 
   if (isAudioOnly) {
     args.push('-vn');
@@ -122,27 +154,35 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
         }
       }
 
-      const isHigh = options.quality === 'high' || !options.quality;
-      const isSmaller = options.quality === 'smaller';
+      if (hasTargetSize && calculatedVideoBitrateKbps !== null) {
+        // Enforce calculated video bitrate budget to strictly hit target size limit
+        const vBitrate = `${calculatedVideoBitrateKbps}k`;
+        const maxrate = `${Math.round(calculatedVideoBitrateKbps * 1.15)}k`;
+        const bufsize = `${Math.round(calculatedVideoBitrateKbps * 1.8)}k`;
+        args.push('-b:v', vBitrate, '-maxrate', maxrate, '-bufsize', bufsize);
+      } else {
+        const isHigh = options.quality === 'high' || !options.quality;
+        const isSmaller = options.quality === 'smaller';
 
-      if (videoEncoder.includes('nvenc')) {
-        const cq = isSmaller ? '28' : isHigh ? '18' : '23';
-        args.push('-cq', cq);
-        if (options.videoBitrate) {
-          args.push('-b:v', options.videoBitrate, '-maxrate', options.videoBitrate);
+        if (videoEncoder.includes('nvenc')) {
+          const cq = isSmaller ? '28' : isHigh ? '18' : '23';
+          args.push('-cq', cq);
+          if (options.videoBitrate) {
+            args.push('-b:v', options.videoBitrate, '-maxrate', options.videoBitrate);
+          }
+        } else if (videoEncoder === 'libx264' || videoEncoder === 'libx265') {
+          // High quality uses visually lossless CRF 17 for cinema-grade clarity
+          const crf = isSmaller ? '28' : isHigh ? '17' : '22';
+          args.push('-crf', crf);
+          if (options.videoBitrate) {
+            const num = parseInt(options.videoBitrate, 10);
+            const unit = options.videoBitrate.replace(/^[0-9.]+/, '') || 'M';
+            const buf = num ? `${num * 2}${unit}` : '32M';
+            args.push('-maxrate', options.videoBitrate, '-bufsize', buf);
+          }
+        } else if (options.videoBitrate) {
+          args.push('-b:v', options.videoBitrate);
         }
-      } else if (videoEncoder === 'libx264' || videoEncoder === 'libx265') {
-        // High quality uses visually lossless CRF 17 for cinema-grade clarity
-        const crf = isSmaller ? '28' : isHigh ? '17' : '22';
-        args.push('-crf', crf);
-        if (options.videoBitrate) {
-          const num = parseInt(options.videoBitrate, 10);
-          const unit = options.videoBitrate.replace(/^[0-9.]+/, '') || 'M';
-          const buf = num ? `${num * 2}${unit}` : '32M';
-          args.push('-maxrate', options.videoBitrate, '-bufsize', buf);
-        }
-      } else if (options.videoBitrate) {
-        args.push('-b:v', options.videoBitrate);
       }
     }
   }
@@ -164,7 +204,9 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
 
     args.push('-c:a', audioEncoder);
 
-    if (options.audioBitrate && audioEncoder !== 'copy' && audioEncoder !== 'flac' && audioEncoder !== 'pcm_s16le') {
+    if (hasTargetSize && calculatedAudioBitrateKbps !== null && audioEncoder !== 'copy' && audioEncoder !== 'flac' && audioEncoder !== 'pcm_s16le') {
+      args.push('-b:a', `${calculatedAudioBitrateKbps}k`);
+    } else if (options.audioBitrate && audioEncoder !== 'copy' && audioEncoder !== 'flac' && audioEncoder !== 'pcm_s16le') {
       args.push('-b:a', options.audioBitrate);
     } else if (audioEncoder !== 'copy' && audioEncoder !== 'flac' && audioEncoder !== 'pcm_s16le') {
       // Default to 256k high-fidelity bitrate to preserve rich vocal harmonics and audio fullness
@@ -183,6 +225,12 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
   // Fast start for web playback
   if (format === 'mp4' || format === 'mov') {
     args.push('-movflags', '+faststart');
+  }
+
+  // Enforce hard file size cap if target size is specified
+  if (hasTargetSize) {
+    const maxBytes = Math.floor(options.targetSizeMb! * 1024 * 1024);
+    args.push('-fs', maxBytes.toString());
   }
 
   // Output file

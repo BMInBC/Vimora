@@ -131,6 +131,39 @@ export default function ConverterPage() {
     );
   };
 
+  // Target File Size Limit & Range state (Default is auto conversion with no specified size limit)
+  const [sizeLimitMode, setSizeLimitMode] = useState<'auto' | 'limit'>('auto');
+  const [targetSizeMb, setTargetSizeMb] = useState<number>(25);
+  const [selectedSizePreset, setSelectedSizePreset] = useState<'auto' | 'discord' | 'whatsapp' | 'email' | 'social' | 'custom'>('auto');
+  const [isSizeCardExpanded, setIsSizeCardExpanded] = useState<boolean>(true);
+
+  const handleSizeSettingChange = (
+    mode: 'auto' | 'limit',
+    presetKey: 'auto' | 'discord' | 'whatsapp' | 'email' | 'social' | 'custom',
+    mbValue: number
+  ) => {
+    setSizeLimitMode(mode);
+    setSelectedSizePreset(presetKey);
+    setTargetSizeMb(mbValue);
+
+    const effectiveMb = mode === 'auto' ? undefined : mbValue;
+
+    setJobs((prev) =>
+      prev.map((job) =>
+        job.status === 'queued'
+          ? {
+              ...job,
+              options: {
+                ...job.options,
+                targetSizeMb: effectiveMb,
+                sizeLimitPreset: mode === 'auto' ? 'auto' : presetKey,
+              },
+            }
+          : job
+      )
+    );
+  };
+
   // Store raw browser File objects for local upload staging
   const rawFilesRef = useRef<Map<string, File>>(new Map());
   // Store active AbortControllers for pausible jobs
@@ -200,6 +233,26 @@ export default function ConverterPage() {
     const presetFraming = preset.aspectRatioMode || (isVertical ? 'crop_fill' : 'pad_black');
     setFramingMode(presetFraming);
 
+    let activeSizeMode = sizeLimitMode;
+    let activeSizePreset = selectedSizePreset;
+    let activeSizeMb = targetSizeMb;
+
+    if (preset.id === 'discord_compress') {
+      activeSizeMode = 'limit';
+      activeSizePreset = 'discord';
+      activeSizeMb = 25;
+      setSizeLimitMode('limit');
+      setSelectedSizePreset('discord');
+      setTargetSizeMb(25);
+    } else if (preset.id === 'whatsapp_compress') {
+      activeSizeMode = 'limit';
+      activeSizePreset = 'whatsapp';
+      activeSizeMb = 16;
+      setSizeLimitMode('limit');
+      setSelectedSizePreset('whatsapp');
+      setTargetSizeMb(16);
+    }
+
     // Update all queued jobs to reflect newly selected preset
     setJobs((prev) =>
       prev.map((job) =>
@@ -222,6 +275,8 @@ export default function ConverterPage() {
                 normalizeAudio: false,
                 maintainAspect: preset.maintainAspect,
                 aspectRatioMode: presetFraming,
+                targetSizeMb: activeSizeMode === 'auto' ? undefined : activeSizeMb,
+                sizeLimitPreset: activeSizeMode === 'auto' ? 'auto' : activeSizePreset,
               },
             }
           : job
@@ -307,6 +362,8 @@ export default function ConverterPage() {
         maintainAspect: selectedPreset.maintainAspect,
         aspectRatioMode: activeFraming,
         outputDirectory: outputDir,
+        targetSizeMb: sizeLimitMode === 'auto' ? undefined : targetSizeMb,
+        sizeLimitPreset: sizeLimitMode === 'auto' ? 'auto' : selectedSizePreset,
       };
 
       newJobs.push({
@@ -595,6 +652,7 @@ export default function ConverterPage() {
         isGpuAccelerated: Boolean(completedJob.isGpuAccelerated),
         status: 'completed',
         durationSeconds: Math.round(data.durationSeconds || 5),
+        targetSizeMb: completedJob.options.targetSizeMb,
         timestamp: Date.now(),
       }, user?.uid);
       refreshHistory();
@@ -998,6 +1056,263 @@ export default function ConverterPage() {
               </div>
             )}
 
+            {/* Target File Size & Compression Range Control Card */}
+            <div className="mt-4 pt-3.5 border-t border-slate-100">
+              <div className="rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden transition-all">
+                {/* Card Header with Toggle */}
+                <div
+                  onClick={() => setIsSizeCardExpanded((prev) => !prev)}
+                  className="p-3.5 sm:p-4 flex items-center justify-between gap-3 bg-gradient-to-r from-slate-50/80 to-white hover:bg-slate-50 transition-colors cursor-pointer select-none"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-[#0B6FFB]/10 text-[#0B6FFB] flex items-center justify-center shrink-0">
+                      <HardDrive className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-slate-900 font-nunito">
+                          Target File Size & Limit
+                        </span>
+                        {sizeLimitMode === 'auto' ? (
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200/60 inline-flex items-center">
+                            Auto
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-[#0B6FFB] border border-blue-200 inline-flex items-center gap-1">
+                            <Check className="w-3 h-3 text-[#0B6FFB] stroke-[3]" />
+                            Target ≤ {targetSizeMb} MB
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                        {sizeLimitMode === 'auto'
+                          ? 'Converts automatically. Click to specify target MB for Discord, WhatsApp, or email.'
+                          : `FFmpeg calculates dynamic bitrates to keep output strictly under ${targetSizeMb} MB.`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      aria-label={isSizeCardExpanded ? 'Collapse size settings' : 'Expand size settings'}
+                      className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors"
+                    >
+                      <ChevronDown
+                        className={`w-4 h-4 transition-transform duration-200 ${
+                          isSizeCardExpanded ? 'rotate-180' : ''
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Expandable Body */}
+                {isSizeCardExpanded && (
+                  <div className="p-3.5 sm:p-4 pt-2 border-t border-slate-100/80 bg-white space-y-3.5 animate-in fade-in-0 duration-150">
+                    {/* Mode Selector Switch: Auto vs Custom Size */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSizeSettingChange('auto', 'auto', targetSizeMb)}
+                        className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer flex items-center gap-2.5 ${
+                          sizeLimitMode === 'auto'
+                            ? 'border-[#0B6FFB] bg-blue-50/40 ring-1 ring-[#0B6FFB]'
+                            : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div
+                          className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                            sizeLimitMode === 'auto'
+                              ? 'border-[#0B6FFB] bg-[#0B6FFB]'
+                              : 'border-slate-300 bg-white'
+                          }`}
+                        >
+                          {sizeLimitMode === 'auto' && (
+                            <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold text-slate-900 block font-nunito">
+                            Auto
+                          </span>
+                          <span className="text-[11px] text-slate-500 block truncate">
+                            Converts automatically with no file size restrictions
+                          </span>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleSizeSettingChange(
+                            'limit',
+                            selectedSizePreset === 'auto' ? 'discord' : selectedSizePreset,
+                            targetSizeMb || 25
+                          )
+                        }
+                        className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer flex items-center gap-2.5 ${
+                          sizeLimitMode === 'limit'
+                            ? 'border-[#0B6FFB] bg-blue-50/40 ring-1 ring-[#0B6FFB]'
+                            : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div
+                          className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                            sizeLimitMode === 'limit'
+                              ? 'border-[#0B6FFB] bg-[#0B6FFB]'
+                              : 'border-slate-300 bg-white'
+                          }`}
+                        >
+                          {sizeLimitMode === 'limit' && (
+                            <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold text-slate-900 block font-nunito">
+                            Target Size Limit / Range
+                          </span>
+                          <span className="text-[11px] text-slate-500 block truncate">
+                            Specify max MB for Discord, WhatsApp, or email
+                          </span>
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* When Size Limit Mode is Active */}
+                    {sizeLimitMode === 'limit' && (
+                      <div className="pt-2 border-t border-slate-100 space-y-3">
+                        {/* Quick Limit Badges */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-slate-700">Quick Limits:</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {[
+                              { id: 'discord', label: 'Discord', mb: 25, hint: '<25MB free limit' },
+                              { id: 'whatsapp', label: 'WhatsApp', mb: 16, hint: '<16MB chat' },
+                              { id: 'email', label: 'Email', mb: 10, hint: '<10MB attachment' },
+                              { id: 'social', label: 'Social', mb: 50, hint: '<50MB clip' },
+                              { id: 'custom', label: 'Custom', mb: targetSizeMb, hint: 'Custom MB' },
+                            ].map((item) => {
+                              const isActive =
+                                selectedSizePreset === item.id ||
+                                (item.id !== 'custom' && selectedSizePreset !== 'custom' && targetSizeMb === item.mb);
+                              return (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() =>
+                                    handleSizeSettingChange(
+                                      'limit',
+                                      item.id as any,
+                                      item.id === 'custom' ? targetSizeMb : item.mb
+                                    )
+                                  }
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                    isActive
+                                      ? 'bg-[#0B6FFB] text-white shadow-xs'
+                                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                  }`}
+                                  title={item.hint}
+                                >
+                                  <span>{item.label}</span>
+                                  <span
+                                    className={`text-[10px] font-mono px-1 py-0.2 rounded ${
+                                      isActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'
+                                    }`}
+                                  >
+                                    ≤{item.id === 'custom' ? targetSizeMb : item.mb}MB
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Custom Input Stepper & Slider */}
+                        <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/70 flex flex-col sm:flex-row items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <span className="text-xs font-bold text-slate-700 shrink-0">Max Size:</span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleSizeSettingChange(
+                                    'limit',
+                                    'custom',
+                                    Math.max(1, targetSizeMb - (targetSizeMb > 25 ? 5 : 1))
+                                  )
+                                }
+                                className="w-7 h-7 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-700 font-bold text-xs cursor-pointer shadow-2xs"
+                              >
+                                -
+                              </button>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={4000}
+                                  value={targetSizeMb}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10);
+                                    if (!isNaN(val) && val > 0) {
+                                      handleSizeSettingChange('limit', 'custom', val);
+                                    }
+                                  }}
+                                  className="w-20 pl-2.5 pr-8 py-1 rounded-lg border border-slate-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#0B6FFB]"
+                                />
+                                <span className="absolute right-2 top-1.5 text-[10px] font-bold text-slate-400 font-mono pointer-events-none">
+                                  MB
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleSizeSettingChange(
+                                    'limit',
+                                    'custom',
+                                    targetSizeMb + (targetSizeMb >= 25 ? 5 : 1)
+                                  )
+                                }
+                                className="w-7 h-7 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-700 font-bold text-xs cursor-pointer shadow-2xs"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Range Slider for Quick Adjustment */}
+                          <div className="flex items-center gap-2.5 w-full sm:w-60">
+                            <span className="text-[10px] text-slate-400 font-mono shrink-0">5MB</span>
+                            <input
+                              type="range"
+                              min={5}
+                              max={100}
+                              step={1}
+                              value={Math.min(100, Math.max(5, targetSizeMb))}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value, 10);
+                                handleSizeSettingChange('limit', 'custom', val);
+                              }}
+                              className="w-full accent-[#0B6FFB] cursor-pointer"
+                            />
+                            <span className="text-[10px] text-slate-400 font-mono shrink-0">100MB</span>
+                          </div>
+                        </div>
+
+                        {/* Explanatory Help Text */}
+                        <div className="flex items-start gap-2 text-[11px] text-slate-600 bg-blue-50/50 p-2.5 rounded-xl border border-blue-100/70">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-[#0B6FFB] stroke-[2.5] shrink-0 mt-0.5" />
+                          <span>
+                            Files will be converted with dynamically scaled bitrates and an absolute file size ceiling to ensure they stay under <strong>{targetSizeMb} MB</strong> without sacrificing audio voice clarity.
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Live Preset Capabilities & Changes Preview */}
             <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-start gap-3 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/70">
               <div className="p-2 rounded-lg bg-[#0B6FFB]/10 text-[#0B6FFB] shrink-0 mt-0.5">
@@ -1129,7 +1444,7 @@ export default function ConverterPage() {
                 {/* Target Planned Output */}
                 <div className="bg-blue-50/30 p-4 rounded-2xl border border-blue-100 space-y-2">
                   <p className="font-bold text-slate-900 flex items-center gap-1.5 uppercase text-[10px] tracking-wider font-mono text-[#0B6FFB] mb-1">
-                    <span>🎯 Target Planned Output</span>
+                    <span>Target Planned Output</span>
                   </p>
                   <div className="space-y-1.5 text-slate-700">
                     <div className="flex justify-between border-b border-blue-100/60 pb-1"><span className="text-slate-500">Selected Format:</span><span className="font-bold text-[#0B6FFB]">{targetFormat}</span></div>
@@ -1137,6 +1452,14 @@ export default function ConverterPage() {
                     <div className="flex justify-between border-b border-blue-100/60 pb-1"><span className="text-slate-500">Target Frame Rate:</span><span className="font-semibold">{targetFps}</span></div>
                     <div className="flex justify-between border-b border-blue-100/60 pb-1"><span className="text-slate-500">Selected Encoder:</span><span className="font-semibold">{targetEncoder}</span></div>
                     <div className="flex justify-between border-b border-blue-100/60 pb-1"><span className="text-slate-500">Framing Method:</span><span className="font-semibold">{framingMethod}</span></div>
+                    <div className="flex justify-between border-b border-blue-100/60 pb-1">
+                      <span className="text-slate-500">Target File Size:</span>
+                      <span className="font-semibold text-slate-900">
+                        {sampleJob.options.targetSizeMb
+                          ? `≤ ${sampleJob.options.targetSizeMb} MB (${sampleJob.options.sizeLimitPreset ? sampleJob.options.sizeLimitPreset.toUpperCase() : 'Custom Limit'})`
+                          : 'Auto'}
+                      </span>
+                    </div>
                     <div className="flex justify-between"><span className="text-slate-500">Audio Preservation:</span><span className="font-semibold text-emerald-700">{audioSetting}</span></div>
                   </div>
                 </div>
@@ -1196,6 +1519,19 @@ export default function ConverterPage() {
                           <span className="uppercase font-semibold text-slate-700">
                             {job.file.format} &rarr; {job.options.outputFormat}
                           </span>
+                          {job.options.targetSizeMb ? (
+                            <>
+                              <span>&bull;</span>
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold bg-[#0B6FFB]/10 text-[#0B6FFB]">
+                                ≤ {job.options.targetSizeMb} MB
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span>&bull;</span>
+                              <span className="text-slate-400 text-[11px]">Auto Size</span>
+                            </>
+                          )}
                           {job.file.width && job.file.height && (
                             <>
                               <span>&bull;</span>
@@ -1604,6 +1940,11 @@ export default function ConverterPage() {
                       {item.isGpuAccelerated && (
                         <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.2 rounded">
                           <Zap className="w-2.5 h-2.5" /> GPU
+                        </span>
+                      )}
+                      {item.targetSizeMb && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-blue-50 text-[#0B6FFB] border border-blue-200 px-1.5 py-0.2 rounded font-mono">
+                          ≤ {item.targetSizeMb}MB
                         </span>
                       )}
                     </div>
