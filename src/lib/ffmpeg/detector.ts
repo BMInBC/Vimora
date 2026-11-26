@@ -1,4 +1,4 @@
-import { GpuCapabilities, GpuEncoderType } from '../types';
+import type { GpuCapabilities, GpuEncoderType, VideoCodec } from '../types';
 
 let cachedCapabilities: GpuCapabilities | null = null;
 
@@ -6,15 +6,19 @@ export function getFallbackCapabilities(): GpuCapabilities {
   return {
     hasGpu: false,
     type: 'cpu',
-    displayName: 'CPU Software (x264 / VP9 / LAME)',
+    displayName: 'CPU Software (x264 / x265 / VP9)',
     supportedVideoEncoders: ['libx264', 'libx265', 'libvpx-vp9'],
     fallbackEncoder: 'libx264',
   };
 }
 
+export function clearGpuCapabilitiesCache(): void {
+  cachedCapabilities = null;
+}
+
 export function parseEncoderOutput(stdout: string): GpuCapabilities {
   const encoders = stdout.toLowerCase();
-  
+
   const hasNvenc = encoders.includes('h264_nvenc');
   const hasQsv = encoders.includes('h264_qsv');
   const hasAmf = encoders.includes('h264_amf');
@@ -36,6 +40,7 @@ export function parseEncoderOutput(stdout: string): GpuCapabilities {
   if (hasQsv) {
     const list: string[] = ['h264_qsv'];
     if (encoders.includes('hevc_qsv')) list.push('hevc_qsv');
+    if (encoders.includes('av1_qsv')) list.push('av1_qsv');
     return {
       hasGpu: true,
       type: 'qsv',
@@ -48,6 +53,7 @@ export function parseEncoderOutput(stdout: string): GpuCapabilities {
   if (hasAmf) {
     const list: string[] = ['h264_amf'];
     if (encoders.includes('hevc_amf')) list.push('hevc_amf');
+    if (encoders.includes('av1_amf')) list.push('av1_amf');
     return {
       hasGpu: true,
       type: 'amf',
@@ -72,12 +78,82 @@ export function parseEncoderOutput(stdout: string): GpuCapabilities {
   return getFallbackCapabilities();
 }
 
-export async function detectGpuCapabilities(): Promise<GpuCapabilities> {
+export interface ResolvedEncoder {
+  encoder: string;
+  isGpu: boolean;
+  gpuType: GpuEncoderType;
+  fallbackReason?: string;
+}
+
+/**
+ * Validates actual hardware encoder availability for the requested codec and
+ * safely falls back to CPU without ever falsely claiming GPU acceleration.
+ */
+export function resolveEncoderForCodec(
+  codec: VideoCodec | undefined,
+  gpuCaps: GpuCapabilities | null | undefined,
+  enableGpu = true,
+  gpuPreference: 'auto' | GpuEncoderType = 'auto'
+): ResolvedEncoder {
+  const targetCodec = codec || 'h264';
+  if (targetCodec === 'copy') {
+    return { encoder: 'copy', isGpu: false, gpuType: 'cpu' };
+  }
+
+  const cpuEncoder =
+    targetCodec === 'hevc'
+      ? 'libx265'
+      : targetCodec === 'vp9'
+      ? 'libvpx-vp9'
+      : targetCodec === 'av1'
+      ? 'libsvtav1'
+      : 'libx264';
+
+  if (!enableGpu || gpuPreference === 'cpu' || !gpuCaps?.hasGpu || gpuCaps.type === 'cpu') {
+    return {
+      encoder: cpuEncoder,
+      isGpu: false,
+      gpuType: 'cpu',
+      fallbackReason: !enableGpu || gpuPreference === 'cpu' ? 'CPU encoding selected' : undefined,
+    };
+  }
+
+  // VP9 is software-encoded on consumer GPUs in FFmpeg
+  if (targetCodec === 'vp9') {
+    return {
+      encoder: 'libvpx-vp9',
+      isGpu: false,
+      gpuType: 'cpu',
+      fallbackReason: 'VP9 uses CPU software encoding for maximum compatibility',
+    };
+  }
+
+  const suffix = gpuCaps.type;
+  const candidate = `${targetCodec}_${suffix}`;
+  if (gpuCaps.supportedVideoEncoders.includes(candidate)) {
+    return {
+      encoder: candidate,
+      isGpu: true,
+      gpuType: gpuCaps.type,
+    };
+  }
+
+  return {
+    encoder: cpuEncoder,
+    isGpu: false,
+    gpuType: 'cpu',
+    fallbackReason: `${candidate} is not supported by this hardware; using ${cpuEncoder} CPU fallback`,
+  };
+}
+
+export async function detectGpuCapabilities(options?: { forceRefresh?: boolean }): Promise<GpuCapabilities> {
+  if (options?.forceRefresh) {
+    cachedCapabilities = null;
+  }
   if (cachedCapabilities) {
     return cachedCapabilities;
   }
 
-  // If running inside Tauri desktop app, use native hardware detection
   try {
     const { isDesktopApp, getDesktopGpuCaps } = await import('../desktop/tauriBridge');
     if (isDesktopApp()) {
@@ -92,7 +168,7 @@ export async function detectGpuCapabilities(): Promise<GpuCapabilities> {
   }
 
   try {
-    const res = await fetch('/api/gpu', { method: 'GET' });
+    const res = await fetch('/api/gpu', { method: 'GET', cache: 'no-store' });
     const contentType = res.headers.get('content-type') || '';
     if (res.ok && contentType.includes('application/json')) {
       const data = await res.json();

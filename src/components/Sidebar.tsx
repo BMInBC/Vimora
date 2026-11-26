@@ -7,14 +7,15 @@ import { useAuth } from "@/lib/firebase/authContext";
 import { Logo } from "@/components/Logo";
 import {
   Sliders,
-  LayoutDashboard,
+  ListVideo,
+  History,
+  Sparkles,
   Crown,
   User as UserIcon,
   LogOut,
   Menu,
   X,
   ShieldAlert,
-  ArrowUpRight,
   ChevronLeft,
   ChevronRight,
   Settings,
@@ -46,32 +47,47 @@ export default function Sidebar({ isCollapsed, onToggleCollapse }: SidebarProps)
 
   const NAV_ITEMS = [
     {
-      name: "Converter",
+      name: "New Conversion",
       href: "/converter",
       icon: Sliders,
-      badge: "GPU",
+      badge: "Local",
     },
     {
-      name: "Dashboard",
-      href: "/dashboard",
-      icon: LayoutDashboard,
+      name: "Queue",
+      href: "/converter?view=queue",
+      icon: ListVideo,
     },
     {
-      name: "User Profile",
-      href: "/user",
-      icon: UserIcon,
+      name: "Presets",
+      href: "/presets",
+      icon: Sparkles,
     },
     {
-      name: "Pricing & Plans",
+      name: "History",
+      href: "/history",
+      icon: History,
+    },
+    {
+      name: "Settings",
+      href: "/settings",
+      icon: Settings,
+    },
+    {
+      name: "Pricing & Upgrade",
       href: "/pricing",
       icon: Crown,
-      badge: isPro ? "Active" : "Pro",
+      badge: isPro ? "Pro" : "Upgrade",
+    },
+    {
+      name: "Account",
+      href: "/user",
+      icon: UserIcon,
     },
   ];
 
   const isActive = (href: string) => {
-    if (href === "/converter" && (pathname === "/converter" || pathname.startsWith("/converter/"))) return true;
-    if (href === "/user" && (pathname === "/user" || pathname === "/settings")) return true;
+    if (href === "/converter" && pathname === "/converter") return true;
+    if (href === "/converter?view=queue") return false;
     return pathname === href;
   };
 

@@ -1,4 +1,60 @@
-import { ConversionOptions, GpuCapabilities, OutputFormat } from '../types';
+import type { ConversionOptions, GpuCapabilities, OutputFormat } from '../types';
+import { calculateTargetSizeBudget } from './bitrateBudget';
+import { resolveEncoderForCodec } from './detector';
+
+export function buildVideoFilterExpression(options: ConversionOptions): string | null {
+  if (!options.resolution || options.videoCodec === 'copy') return null;
+  const parts = options.resolution.split('x');
+  if (parts.length !== 2) return null;
+  const w = parseInt(parts[0], 10);
+  const h = parseInt(parts[1], 10);
+  if (isNaN(w) || isNaN(h) || w <= 0 || h <= 0) return null;
+
+  const isVerticalTarget = h > w;
+  const mode =
+    options.aspectRatioMode ||
+    (isVerticalTarget ? 'crop_fill' : options.maintainAspect !== false ? 'pad_black' : 'stretch');
+
+  const scaleFlags = 'flags=lanczos+accurate_rnd';
+  const isHD = w >= 1280 || h >= 720;
+  const colorMatrix = isHD ? 'in_color_matrix=auto:out_color_matrix=bt709:' : '';
+
+  if (mode === 'crop_fill') {
+    const focus = options.subjectFocus || 'center';
+    let cropX = '(iw-ow)/2';
+    let cropY = '(ih-oh)/2';
+
+    if (focus === 'top') {
+      cropY = '0';
+    } else if (focus === 'bottom') {
+      cropY = 'ih-oh';
+    } else if (focus === 'manual') {
+      const pctX = Math.max(0, Math.min(100, options.cropPositionX ?? 50)) / 100;
+      const pctY = Math.max(0, Math.min(100, options.cropPositionY ?? 50)) / 100;
+      cropX = `(iw-ow)*${Number(pctX.toFixed(3))}`;
+      cropY = `(ih-oh)*${Number(pctY.toFixed(3))}`;
+    }
+
+    return `scale=${w}:${h}:${colorMatrix}${scaleFlags}:force_original_aspect_ratio=increase,crop=${w}:${h}:${cropX}:${cropY}`;
+  }
+
+  if (mode === 'blur_pad') {
+    return `split[fg][bg];[bg]scale=${w}:${h}:${colorMatrix}${scaleFlags}:force_original_aspect_ratio=increase,crop=${w}:${h},boxblur=25:5[bgblur];[fg]scale=${w}:${h}:${colorMatrix}${scaleFlags}:force_original_aspect_ratio=decrease[fgfit];[bgblur][fgfit]overlay=(W-w)/2:(H-h)/2`;
+  }
+
+  if (mode === 'keep_original') {
+    // Fit within target bounds preserving original aspect ratio and even dimensions (no crop, no bars)
+    const maxDim = Math.max(w, h);
+    return `scale='min(${maxDim},iw)':'min(${maxDim},ih)':${colorMatrix}${scaleFlags}:force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2`;
+  }
+
+  if (mode === 'stretch' || options.maintainAspect === false) {
+    return `scale=${w}:${h}:${colorMatrix}${scaleFlags}`;
+  }
+
+  // pad_black: keep aspect ratio and pad with black borders
+  return `scale=${w}:${h}:${colorMatrix}${scaleFlags}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`;
+}
 
 export interface BuildArgsParams {
   inputPath: string;
@@ -32,28 +88,37 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
   let calculatedAudioBitrateKbps: number | null = null;
 
   if (hasTargetSize) {
-    const targetMb = options.targetSizeMb!;
+    let targetW: number | undefined;
+    let targetH: number | undefined;
+    if (options.resolution) {
+      const parts = options.resolution.split('x');
+      if (parts.length === 2) {
+        targetW = parseInt(parts[0], 10) || undefined;
+        targetH = parseInt(parts[1], 10) || undefined;
+      }
+    }
+
     const dur = durationSeconds && durationSeconds > 0 ? durationSeconds : 0;
-
     if (dur > 0) {
-      // 94% safe budget to account for container muxing, moov atom, and VBR packet fluctuations
-      const safeBudgetBits = targetMb * 1024 * 1024 * 8 * 0.94;
-      const totalBitrateKbps = Math.floor((safeBudgetBits / dur) / 1000);
+      const budget = calculateTargetSizeBudget({
+        targetSizeMb: options.targetSizeMb!,
+        durationSeconds: dur,
+        width: targetW,
+        height: targetH,
+        fps: options.fps,
+        outputFormat: format,
+        videoCodec: options.videoCodec,
+        keepAudio: options.keepAudio,
+        qualityPreference: options.quality,
+      });
 
-      if (isAudioOnly) {
-        calculatedAudioBitrateKbps = Math.min(320, Math.max(32, totalBitrateKbps));
-      } else {
-        // Allocate audio bitrate smartly based on overall budget
-        let audioK = 192;
-        if (totalBitrateKbps < 180) {
-          audioK = 64;
-        } else if (totalBitrateKbps < 360) {
-          audioK = 96;
-        } else if (totalBitrateKbps < 750) {
-          audioK = 128;
+      if (!budget.isLosslessFormat) {
+        if (isAudioOnly) {
+          calculatedAudioBitrateKbps = budget.audioBitrateKbps;
+        } else {
+          calculatedVideoBitrateKbps = budget.videoBitrateKbps;
+          calculatedAudioBitrateKbps = budget.audioBitrateKbps;
         }
-        calculatedAudioBitrateKbps = audioK;
-        calculatedVideoBitrateKbps = Math.max(50, totalBitrateKbps - audioK);
       }
     }
   }
@@ -67,27 +132,13 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
 
   // Video options (if not audio-only format)
   if (!isAudioOnly) {
-    let videoEncoder = 'libx264'; // Default safe CPU fallback
-
-    if (enableGpu && gpuCaps?.hasGpu) {
-      if (gpuCaps.type === 'nvenc') {
-        videoEncoder = options.videoCodec === 'hevc' ? 'hevc_nvenc' : 'h264_nvenc';
-      } else if (gpuCaps.type === 'qsv') {
-        videoEncoder = options.videoCodec === 'hevc' ? 'hevc_qsv' : 'h264_qsv';
-      } else if (gpuCaps.type === 'amf') {
-        videoEncoder = options.videoCodec === 'hevc' ? 'hevc_amf' : 'h264_amf';
-      } else if (gpuCaps.type === 'videotoolbox') {
-        videoEncoder = options.videoCodec === 'hevc' ? 'hevc_videotoolbox' : 'h264_videotoolbox';
-      }
-    } else {
-      if (options.videoCodec === 'hevc') {
-        videoEncoder = 'libx265';
-      } else if (options.videoCodec === 'vp9') {
-        videoEncoder = 'libvpx-vp9';
-      } else if (options.videoCodec === 'copy') {
-        videoEncoder = 'copy';
-      }
-    }
+    const forceCpuForTwoPass = Boolean(hasTargetSize && options.strictTwoPass);
+    const resolved = resolveEncoderForCodec(
+      options.videoCodec,
+      gpuCaps,
+      enableGpu && !forceCpuForTwoPass
+    );
+    const videoEncoder = resolved.encoder;
 
     args.push('-c:v', videoEncoder);
 
@@ -98,39 +149,10 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
       args.push('-preset', 'medium');
     }
 
-    // Resolution & Aspect Ratio filter with Lanczos scaling & BT.709 color matrix preservation
-    if (options.resolution && options.videoCodec !== 'copy') {
-      const parts = options.resolution.split('x');
-      if (parts.length === 2) {
-        const w = parseInt(parts[0], 10);
-        const h = parseInt(parts[1], 10);
-        if (!isNaN(w) && !isNaN(h)) {
-          const isVerticalTarget = h > w;
-          const mode =
-            options.aspectRatioMode ||
-            (isVerticalTarget ? 'crop_fill' : options.maintainAspect !== false ? 'pad_black' : 'stretch');
-
-          const scaleFlags = 'flags=lanczos+accurate_rnd';
-          const isHD = w >= 1280 || h >= 720;
-          const colorMatrix = isHD ? 'in_color_matrix=auto:out_color_matrix=bt709:' : '';
-
-          if (mode === 'crop_fill') {
-            // Fills frame completely (ideal for vertical TikTok / Reels / Shorts with 0 black bars)
-            args.push('-vf', `scale=${w}:${h}:${colorMatrix}${scaleFlags}:force_original_aspect_ratio=increase,crop=${w}:${h}`);
-          } else if (mode === 'blur_pad') {
-            // Fills canvas with stylish blurred video background
-            args.push(
-              '-vf',
-              `split[fg][bg];[bg]scale=${w}:${h}:${colorMatrix}${scaleFlags}:force_original_aspect_ratio=increase,crop=${w}:${h},boxblur=25:5[bgblur];[fg]scale=${w}:${h}:${colorMatrix}${scaleFlags}:force_original_aspect_ratio=decrease[fgfit];[bgblur][fgfit]overlay=(W-w)/2:(H-h)/2`
-            );
-          } else if (mode === 'stretch' || options.maintainAspect === false) {
-            args.push('-vf', `scale=${w}:${h}:${colorMatrix}${scaleFlags}`);
-          } else {
-            // pad_black: keep aspect ratio and pad with black borders
-            args.push('-vf', `scale=${w}:${h}:${colorMatrix}${scaleFlags}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2`);
-          }
-        }
-      }
+    // Resolution & Aspect Ratio filter with Lanczos scaling, subject-focus crop & BT.709 color preservation
+    const vfExpr = buildVideoFilterExpression(options);
+    if (vfExpr) {
+      args.push('-vf', vfExpr);
     }
 
     // Framerate: enforce target fps (e.g. 60fps for YouTube Full HD)
@@ -155,11 +177,17 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
       }
 
       if (hasTargetSize && calculatedVideoBitrateKbps !== null) {
-        // Enforce calculated video bitrate budget to strictly hit target size limit
+        // Enforce calculated video bitrate budget to hit target size limit accurately
         const vBitrate = `${calculatedVideoBitrateKbps}k`;
         const maxrate = `${Math.round(calculatedVideoBitrateKbps * 1.15)}k`;
         const bufsize = `${Math.round(calculatedVideoBitrateKbps * 1.8)}k`;
-        args.push('-b:v', vBitrate, '-maxrate', maxrate, '-bufsize', bufsize);
+
+        if (videoEncoder.includes('nvenc')) {
+          // Hardware-native NVENC VBR + fullres multipass + VBV rate control
+          args.push('-rc', 'vbr', '-multipass', 'fullres', '-b:v', vBitrate, '-maxrate', maxrate, '-bufsize', bufsize);
+        } else {
+          args.push('-b:v', vBitrate, '-maxrate', maxrate, '-bufsize', bufsize);
+        }
       } else {
         const isHigh = options.quality === 'high' || !options.quality;
         const isSmaller = options.quality === 'smaller';
@@ -227,16 +255,95 @@ export function buildSafeFfmpegArgs(params: BuildArgsParams): string[] {
     args.push('-movflags', '+faststart');
   }
 
-  // Enforce hard file size cap if target size is specified
-  if (hasTargetSize) {
-    const maxBytes = Math.floor(options.targetSizeMb! * 1024 * 1024);
-    args.push('-fs', maxBytes.toString());
-  }
+  // Note: We deliberately avoid FFmpeg's -fs flag because it truncates the end of
+  // the media stream when reached. Instead, we enforce target size via accurate
+  // container-overhead bitrate budgeting + VBV rate control (-b:v, -maxrate, -bufsize)
+  // and validate the real output size after conversion.
 
   // Output file
   args.push(outputPath);
 
   return args;
+}
+
+export interface TwoPassFfmpegArgs {
+  pass1Args: string[];
+  pass2Args: string[];
+  passLogPrefix: string;
+}
+
+export function shouldUseCpuTwoPass(params: {
+  options: ConversionOptions;
+  gpuCaps?: GpuCapabilities;
+  enableGpu?: boolean;
+  durationSeconds?: number;
+}): boolean {
+  const { options, gpuCaps, enableGpu = true, durationSeconds } = params;
+  const format = (options.outputFormat || 'mp4').toLowerCase() as OutputFormat;
+  const isAudioOnly = ['mp3', 'wav', 'aac', 'flac', 'ogg'].includes(format);
+  const hasTargetSize = typeof options.targetSizeMb === 'number' && options.targetSizeMb > 0;
+  if (!hasTargetSize || isAudioOnly || !durationSeconds || durationSeconds <= 0) {
+    return false;
+  }
+  if (options.videoCodec === 'copy') {
+    return false;
+  }
+  const willUseGpu = Boolean(enableGpu && !options.strictTwoPass && gpuCaps?.hasGpu && gpuCaps.type !== 'cpu');
+  return !willUseGpu;
+}
+
+export function buildTwoPassFfmpegArgs(
+  params: BuildArgsParams,
+  passLogPrefix: string,
+  nullOutputTarget: string
+): TwoPassFfmpegArgs {
+  // Always use CPU software encoding for standard FFmpeg 2-pass
+  const cpuBaseArgs = buildSafeFfmpegArgs({
+    ...params,
+    enableGpu: false,
+  });
+
+  // Pass 2: insert -pass 2 -passlogfile <prefix> right before outputPath
+  const outIdx = cpuBaseArgs.length - 1;
+  const pass2Args = [
+    ...cpuBaseArgs.slice(0, outIdx),
+    '-pass',
+    '2',
+    '-passlogfile',
+    passLogPrefix,
+    cpuBaseArgs[outIdx],
+  ];
+
+  // Pass 1: same video/filter/rate-control settings with audio disabled and null muxer
+  const pass1BaseArgs = buildSafeFfmpegArgs({
+    ...params,
+    enableGpu: false,
+    options: {
+      ...params.options,
+      keepAudio: false,
+    },
+  });
+  // Strip -movflags +faststart for null muxer compatibility
+  const filteredPass1: string[] = [];
+  for (let i = 0; i < pass1BaseArgs.length - 1; i++) {
+    if (pass1BaseArgs[i] === '-movflags') {
+      i++; // skip flag value
+      continue;
+    }
+    filteredPass1.push(pass1BaseArgs[i]);
+  }
+  const pass1Args = [
+    ...filteredPass1,
+    '-pass',
+    '1',
+    '-passlogfile',
+    passLogPrefix,
+    '-f',
+    'null',
+    nullOutputTarget,
+  ];
+
+  return { pass1Args, pass2Args, passLogPrefix };
 }
 
 export interface ParsedProgress {

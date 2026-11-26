@@ -77,10 +77,10 @@ export default function PricingPage() {
       <main className="max-w-5xl mx-auto px-6 py-16">
         <div className="text-center max-w-2xl mx-auto mb-16">
           <h1 className="text-4xl md:text-5xl font-extrabold font-nunito text-slate-950 mb-4">
-            Unlock Full GPU Acceleration
+            Fair, Creator-First Pricing
           </h1>
           <p className="text-slate-600 text-base md:text-lg">
-            Pay securely in Naira with Paystack. Instant activation for desktop and web.
+            Free includes unlimited 1080p local exports, GPU acceleration, and zero watermarks. Upgrade to Pro for 4K/8K, unlimited batch queues, and power workflows.
           </p>
           {error && (
             <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-600 font-medium">
@@ -98,28 +98,32 @@ export default function PricingPage() {
               <p className="text-3xl font-extrabold mt-4 font-sans text-slate-950">
                 ₦0 <span className="text-xs font-normal text-slate-500">forever</span>
               </p>
-              <p className="text-slate-500 text-xs mt-2 mb-6">Standard offline conversion for occasional single files.</p>
+              <p className="text-slate-500 text-xs mt-2 mb-6">Genuinely useful local workstation for everyday creator exports.</p>
 
               <div className="space-y-2.5 text-xs text-slate-600 pt-4 border-t border-slate-100">
                 <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-500">Daily Cap</span>
-                  <span className="font-semibold text-slate-900 font-mono">5 files / day</span>
+                  <span className="text-slate-500">MP4 & MP3 Exports</span>
+                  <span className="font-semibold text-slate-900 font-mono">Unlimited (No watermark)</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-500">Resolution</span>
-                  <span className="font-semibold text-slate-900 font-mono">720p HD</span>
+                  <span className="text-slate-500">Max Resolution</span>
+                  <span className="font-semibold text-slate-900 font-mono">1080p Full HD</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-500">Encoding Engine</span>
-                  <span className="font-semibold text-slate-900 font-mono">CPU (libx264)</span>
+                  <span className="text-slate-500">GPU Acceleration</span>
+                  <span className="font-semibold text-emerald-600 font-mono">Included (Auto)</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-500">Output Containers</span>
-                  <span className="font-semibold text-slate-900 font-mono">MP4, MP3</span>
+                  <span className="text-slate-500">Batch Queue</span>
+                  <span className="font-semibold text-slate-900 font-mono">Up to 3 files / batch</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-100">
+                  <span className="text-slate-500">Custom Presets & History</span>
+                  <span className="font-semibold text-slate-900 font-mono">1 preset • Last 20</span>
                 </div>
                 <div className="flex justify-between py-1">
-                  <span className="text-slate-500">Cloud Uploads</span>
-                  <span className="font-semibold text-emerald-600 font-mono">Zero (100% Local)</span>
+                  <span className="text-slate-500">Target-Size Compression</span>
+                  <span className="font-semibold text-emerald-600 font-mono">Included (Local)</span>
                 </div>
               </div>
             </div>
@@ -148,24 +152,24 @@ export default function PricingPage() {
 
               <div className="space-y-2.5 text-xs text-slate-300 pt-4 border-t border-slate-800">
                 <div className="flex justify-between py-1 border-b border-slate-800/80">
-                  <span className="text-slate-400">Daily Cap</span>
-                  <span className="font-semibold text-white font-mono">Unlimited</span>
+                  <span className="text-slate-400">Batch Queue</span>
+                  <span className="font-semibold text-white font-mono">Unlimited + Parallel</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/80">
                   <span className="text-slate-400">Resolution</span>
-                  <span className="font-semibold text-white font-mono">8K UHD / 4K 60FPS</span>
+                  <span className="font-semibold text-white font-mono">4K / 5K / 8K UHD</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/80">
-                  <span className="text-slate-400">Encoding Engine</span>
-                  <span className="font-semibold text-[#0B6FFB] font-mono">NVENC, AMF, QSV</span>
+                  <span className="text-slate-400">Archival & Codecs</span>
+                  <span className="font-semibold text-[#0B6FFB] font-mono">All Codecs & Masters</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800/80">
-                  <span className="text-slate-400">Queue Capacity</span>
-                  <span className="font-semibold text-white font-mono">1,000+ files</span>
+                  <span className="text-slate-400">Custom Presets & History</span>
+                  <span className="font-semibold text-white font-mono">Unlimited</span>
                 </div>
                 <div className="flex justify-between py-1">
-                  <span className="text-slate-400">Desktop License</span>
-                  <span className="font-semibold text-emerald-400 font-mono">Tauri Client Included</span>
+                  <span className="text-slate-400">Power Workflows</span>
+                  <span className="font-semibold text-emerald-400 font-mono">Watch Folders & Multi-Output</span>
                 </div>
               </div>
             </div>

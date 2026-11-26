@@ -3,7 +3,12 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { buildSafeFfmpegArgs } from '@/lib/ffmpeg/converter';
+import {
+  buildSafeFfmpegArgs,
+  buildTwoPassFfmpegArgs,
+  shouldUseCpuTwoPass,
+} from '@/lib/ffmpeg/converter';
+import { checkConversionRequestEntitlement } from '@/lib/entitlements';
 import { ConversionOptions } from '@/lib/types';
 
 export function getFfmpegBinary(): string {
@@ -19,6 +24,9 @@ export function getFfmpegBinary(): string {
   }
   return 'ffmpeg';
 }
+
+export const dynamic = 'force-dynamic';
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   let tempInputPath: string | null = null;
@@ -172,14 +180,80 @@ export async function POST(req: NextRequest) {
       } catch {}
     }
 
-    // Build safe argument array
-    const rawArgs = buildSafeFfmpegArgs({
-      inputPath,
-      outputPath,
+    // Backend entitlement enforcement (never rely solely on UI checks)
+    const isProClient = req.headers.get('x-vimora-plan') === 'pro';
+    const entitlement = checkConversionRequestEntitlement(isProClient, options);
+    if (!entitlement.allowed) {
+      return NextResponse.json(
+        { success: false, error: entitlement.reason || 'This export setting requires Vimora Pro.' },
+        { status: 403 }
+      );
+    }
+
+    // Build safe argument array (with optional CPU 2-pass when targetSizeMb is active without GPU or strictTwoPass is set)
+    const useCpuTwoPass = shouldUseCpuTwoPass({
       options,
-      enableGpu: true,
+      enableGpu: !options.strictTwoPass,
       durationSeconds: clientDurationSeconds,
     });
+
+    const passLogPrefix = useCpuTwoPass
+      ? path.join(os.tmpdir(), `vimora_2pass_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`)
+      : null;
+
+    const cleanupPassLogs = () => {
+      if (!passLogPrefix) return;
+      for (const suffix of ['-0.log', '-0.log.mbtree', '-0.log.temp', '.log']) {
+        const candidate = `${passLogPrefix}${suffix}`;
+        if (fs.existsSync(candidate)) {
+          try { fs.unlinkSync(candidate); } catch {}
+        }
+      }
+    };
+
+    let rawArgs: string[];
+    if (useCpuTwoPass && passLogPrefix) {
+      const nullTarget = process.platform === 'win32' ? 'NUL' : '/dev/null';
+      const { pass1Args, pass2Args } = buildTwoPassFfmpegArgs(
+        {
+          inputPath,
+          outputPath,
+          options,
+          enableGpu: false,
+          durationSeconds: clientDurationSeconds,
+        },
+        passLogPrefix,
+        nullTarget
+      );
+
+      // Run Pass 1 synchronously before streaming Pass 2
+      const pass1Ok = await new Promise<boolean>((resolve) => {
+        const p1 = spawn(ffmpegBin, pass1Args);
+        p1.on('close', (code) => resolve(code === 0));
+        p1.on('error', () => resolve(false));
+      });
+
+      if (pass1Ok) {
+        rawArgs = pass2Args;
+      } else {
+        cleanupPassLogs();
+        rawArgs = buildSafeFfmpegArgs({
+          inputPath,
+          outputPath,
+          options,
+          enableGpu: false,
+          durationSeconds: clientDurationSeconds,
+        });
+      }
+    } else {
+      rawArgs = buildSafeFfmpegArgs({
+        inputPath,
+        outputPath,
+        options,
+        enableGpu: !options.strictTwoPass,
+        durationSeconds: clientDurationSeconds,
+      });
+    }
 
     // Insert -progress pipe:1 before outputPath
     const outIdx = rawArgs.length - 1;

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '@/lib/firebase/authContext';
-import { CREATOR_PRESETS } from '@/lib/ffmpeg/presets';
+import { CREATOR_PRESETS, getPresetById } from '@/lib/ffmpeg/presets';
 import { detectGpuCapabilities } from '@/lib/ffmpeg/detector';
 import {
   getLocalHistory,
@@ -14,6 +14,26 @@ import {
 import { PlatformIcon } from '@/components/PlatformIcon';
 import { Logo } from '@/components/Logo';
 import { ConversionChangesPreview } from '@/components/ConversionChangesPreview';
+import { WorkflowStepper } from '@/components/WorkflowStepper';
+import { WorkstationStatusStrip } from '@/components/WorkstationStatusStrip';
+import { QuickActionGrid } from '@/components/QuickActionGrid';
+import { DestinationPresetPicker } from '@/components/DestinationPresetPicker';
+import { TargetSizePanel } from '@/components/TargetSizePanel';
+import { SmartVerticalPanel } from '@/components/SmartVerticalPanel';
+import { ErrorDisplayCard } from '@/components/ErrorDisplayCard';
+import { UpgradePromptBanner } from '@/components/UpgradePromptBanner';
+import { validateTargetSizeOutput } from '@/lib/ffmpeg/bitrateBudget';
+import { generateOutputFilename, isDuplicateJob } from '@/lib/ffmpeg/filenamePattern';
+import { recordLocalBenchmark } from '@/lib/ffmpeg/changes';
+import {
+  checkBatchLimitEntitlement,
+  FREE_TIER_LIMITS,
+} from '@/lib/entitlements';
+import {
+  getCustomPresets,
+  hasCompletedFirstConversion,
+  markFirstConversionCompleted,
+} from '@/lib/storage/customPresets';
 import {
   ConversionJob,
   ConversionOptions,
@@ -23,15 +43,28 @@ import {
   OutputFormat,
   LocalHistoryRecord,
   AspectRatioMode,
+  SubjectFocus,
+  QuickActionItem,
+  QualityPreset,
+  TargetSizeRecoveryAction,
+  WorkflowStep,
 } from '@/lib/types';
-import { buildSafeFfmpegArgs } from '@/lib/ffmpeg/converter';
+import {
+  buildSafeFfmpegArgs,
+  buildTwoPassFfmpegArgs,
+  shouldUseCpuTwoPass,
+} from '@/lib/ffmpeg/converter';
 import {
   isDesktopApp,
   convertDesktopMedia,
   cancelDesktopConversion,
   openDesktopFolder,
   pickDesktopFiles,
+  pickDesktopFolderFiles,
   pickDesktopOutputDirectory,
+  getDesktopDownloadDir,
+  getDesktopFileSize,
+  probeDesktopMedia,
 } from '@/lib/desktop/tauriBridge';
 import {
   UploadCloud,
@@ -41,6 +74,7 @@ import {
   Pause,
   Trash2,
   FolderOpen,
+  FolderPlus,
   Zap,
   Cpu,
   CheckCircle2,
@@ -58,48 +92,24 @@ import {
   RefreshCw,
   X,
   FileCheck,
+  RotateCcw,
 } from 'lucide-react';
 import Link from 'next/link';
 
-function getProcessingEngineMessage(isPro: boolean, gpuCaps: GpuCapabilities | null): string {
-  if (!isPro) {
-    return 'Processed 100% locally using CPU.';
-  }
-  if (gpuCaps?.hasGpu) {
+function getProcessingEngineMessage(gpuCaps: GpuCapabilities | null): string {
+  if (gpuCaps?.hasGpu && gpuCaps.type !== 'cpu') {
     switch (gpuCaps.type) {
       case 'nvenc':
         return 'Processed 100% locally using NVIDIA NVENC.';
       case 'qsv':
-        return 'Processed 100% locally using Intel QuickSync.';
+        return 'Processed 100% locally using Intel Quick Sync.';
       case 'amf':
         return 'Processed 100% locally using AMD AMF.';
       case 'videotoolbox':
         return 'Processed 100% locally using Apple VideoToolbox.';
     }
   }
-  return 'Processed 100% locally using CPU fallback.';
-}
-
-function getHardwareStatusText(gpuCaps: GpuCapabilities | null, isPro: boolean): string {
-  if (!gpuCaps) {
-    return 'Detecting available hardware…';
-  }
-  if (!gpuCaps.hasGpu || gpuCaps.type === 'cpu') {
-    return 'Hardware acceleration not detected — CPU encoding available';
-  }
-  if (gpuCaps.type === 'videotoolbox') {
-    return isPro ? 'Apple VideoToolbox active' : 'Apple VideoToolbox available';
-  }
-  if (gpuCaps.type === 'nvenc') {
-    return isPro ? 'GPU detected: NVIDIA NVENC — NVENC active' : 'GPU detected: NVIDIA NVENC — NVENC available with Pro';
-  }
-  if (gpuCaps.type === 'qsv') {
-    return isPro ? 'GPU detected: Intel QuickSync — QuickSync active' : 'GPU detected: Intel QuickSync — QuickSync available with Pro';
-  }
-  if (gpuCaps.type === 'amf') {
-    return isPro ? 'GPU detected: AMD AMF — AMF active' : 'GPU detected: AMD AMF — AMF available with Pro';
-  }
-  return 'Hardware acceleration not detected — CPU encoding available';
+  return 'Processed 100% locally using CPU encoding.';
 }
 
 export default function ConverterPage() {
@@ -114,8 +124,38 @@ export default function ConverterPage() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [framingMode, setFramingMode] = useState<AspectRatioMode>('crop_fill');
+  const [subjectFocus, setSubjectFocus] = useState<SubjectFocus>('center');
+  const [cropPositionX, setCropPositionX] = useState<number>(50);
+  const [cropPositionY, setCropPositionY] = useState<number>(50);
+  const [activeQuickActionId, setActiveQuickActionId] = useState<string | null>('tiktok_reels');
+  const [showAdvancedOutput, setShowAdvancedOutput] = useState<boolean>(false);
+  const [isRecheckingHw, setIsRecheckingHw] = useState<boolean>(false);
+  const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRecheckHardware = async () => {
+    setIsRecheckingHw(true);
+    try {
+      const fresh = await detectGpuCapabilities({ forceRefresh: true });
+      setGpuCaps(fresh);
+    } finally {
+      setIsRecheckingHw(false);
+    }
+  };
+
+  const handleRetryWithDifferentSettings = (jobId: string) => {
+    setJobs((prev) =>
+      prev.map((j) =>
+        j.id === jobId
+          ? { ...j, status: 'queued', errorMessage: undefined, progress: { percent: 0 } }
+          : j
+      )
+    );
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const queueSectionRef = useRef<HTMLDivElement>(null);
   
   // History & Tab navigation state
   const [history, setHistory] = useState<LocalHistoryRecord[]>([]);
@@ -140,20 +180,130 @@ export default function ConverterPage() {
     );
   };
 
+  const handleSubjectFocusChange = (focus: SubjectFocus) => {
+    setSubjectFocus(focus);
+    setJobs((prev) =>
+      prev.map((job) =>
+        job.status === 'queued'
+          ? {
+              ...job,
+              options: {
+                ...job.options,
+                subjectFocus: focus,
+              },
+            }
+          : job
+      )
+    );
+  };
+
+  const handleCropPositionChange = (x: number, y: number) => {
+    setCropPositionX(x);
+    setCropPositionY(y);
+    setJobs((prev) =>
+      prev.map((job) =>
+        job.status === 'queued'
+          ? {
+              ...job,
+              options: {
+                ...job.options,
+                subjectFocus: 'manual',
+                cropPositionX: x,
+                cropPositionY: y,
+              },
+            }
+          : job
+      )
+    );
+  };
+
   // Target File Size Limit & Range state (Default is auto conversion with no specified size limit)
   const [sizeLimitMode, setSizeLimitMode] = useState<'auto' | 'limit'>('auto');
-  const [targetSizeMb, setTargetSizeMb] = useState<number>(25);
+  const [targetSizeMb, setTargetSizeMb] = useState<number>(20);
+  const [targetSizeInput, setTargetSizeInput] = useState<string>('20');
   const [selectedSizePreset, setSelectedSizePreset] = useState<'auto' | 'discord' | 'whatsapp' | 'email' | 'social' | 'custom'>('auto');
+  const [qualityPreference, setQualityPreference] = useState<QualityPreset>('balanced');
+  const [strictTwoPass, setStrictTwoPass] = useState<boolean>(false);
   const [isSizeCardExpanded, setIsSizeCardExpanded] = useState<boolean>(true);
+
+  const handleStrictTwoPassChange = (enabled: boolean) => {
+    setStrictTwoPass(enabled);
+    setJobs((prev) =>
+      prev.map((job) =>
+        job.status === 'queued'
+          ? {
+              ...job,
+              options: {
+                ...job.options,
+                strictTwoPass: enabled,
+              },
+            }
+          : job
+      )
+    );
+  };
+
+  const handleQualityPreferenceChange = (quality: QualityPreset) => {
+    setQualityPreference(quality);
+    setJobs((prev) =>
+      prev.map((job) =>
+        job.status === 'queued'
+          ? {
+              ...job,
+              options: {
+                ...job.options,
+                quality,
+              },
+            }
+          : job
+      )
+    );
+  };
+
+  const handleApplyRecoveryAction = (action: TargetSizeRecoveryAction) => {
+    if (action.type === 'increase_size' && action.recommendedTargetMb) {
+      handleSizeSettingChange('limit', 'custom', action.recommendedTargetMb, true);
+      return;
+    }
+
+    setJobs((prev) =>
+      prev.map((job) => {
+        if (job.status !== 'queued') return job;
+        const nextOptions = { ...job.options };
+        if (action.type === 'reduce_resolution' && action.recommendedResolution) {
+          nextOptions.resolution = action.recommendedResolution;
+        } else if (action.type === 'reduce_fps' && action.recommendedFps) {
+          nextOptions.fps = action.recommendedFps;
+        } else if (action.type === 'remove_audio') {
+          nextOptions.keepAudio = false;
+        } else if (action.type === 'efficient_codec' && action.recommendedCodec) {
+          nextOptions.videoCodec = action.recommendedCodec;
+        }
+        return { ...job, options: nextOptions };
+      })
+    );
+
+    if (action.type === 'reduce_resolution' && action.recommendedResolution) {
+      setSelectedPreset((prev) => ({ ...prev, resolution: action.recommendedResolution }));
+    } else if (action.type === 'reduce_fps' && action.recommendedFps) {
+      setSelectedPreset((prev) => ({ ...prev, fps: action.recommendedFps }));
+    } else if (action.type === 'efficient_codec' && action.recommendedCodec) {
+      setSelectedPreset((prev) => ({ ...prev, videoCodec: action.recommendedCodec }));
+    }
+  };
 
   const handleSizeSettingChange = (
     mode: 'auto' | 'limit',
     presetKey: 'auto' | 'discord' | 'whatsapp' | 'email' | 'social' | 'custom',
-    mbValue: number
+    mbValue: number,
+    syncInput = true
   ) => {
     setSizeLimitMode(mode);
     setSelectedSizePreset(presetKey);
     setTargetSizeMb(mbValue);
+    if (syncInput) {
+      setTargetSizeInput(mbValue.toString());
+    }
 
     const effectiveMb = mode === 'auto' ? undefined : mbValue;
 
@@ -205,12 +355,48 @@ export default function ConverterPage() {
     );
   };
 
+  // Ref for desktop paths handler to avoid stale closures in event listener
+  const handleDesktopPathsRef = useRef<(paths: string[]) => void>(() => {});
+
   useEffect(() => {
     detectGpuCapabilities().then(setGpuCaps);
     refreshHistory();
     const settings = getAppSettings();
     if (settings.defaultOutputDirectory) {
       setOutputDir(settings.defaultOutputDirectory);
+    } else if (isDesktopApp()) {
+      getDesktopDownloadDir().then((dir) => {
+        if (dir) setOutputDir(dir);
+      });
+    }
+
+    if (isDesktopApp()) {
+      let unlisten: (() => void) | undefined;
+      (async () => {
+        try {
+          const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+          const appWindow = getCurrentWebviewWindow();
+          unlisten = await appWindow.onDragDropEvent((event) => {
+            if (event.payload.type === 'enter' || event.payload.type === 'over') {
+              setDragActive(true);
+            } else if (event.payload.type === 'leave') {
+              setDragActive(false);
+            } else if (event.payload.type === 'drop') {
+              setDragActive(false);
+              const paths = event.payload.paths;
+              if (paths && paths.length > 0) {
+                handleDesktopPathsRef.current(paths);
+              }
+            }
+          });
+        } catch (err) {
+          console.warn('[converter] onDragDropEvent listener failed:', err);
+        }
+      })();
+
+      return () => {
+        if (unlisten) unlisten();
+      };
     }
   }, []);
 
@@ -226,14 +412,120 @@ export default function ConverterPage() {
     };
   }, []);
 
+  // Apply URL parameters (?preset=, ?targetMb=, ?custom=1, ?view=queue) safely for static export
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const presetParam = params.get('preset');
+    const targetMbParam = params.get('targetMb');
+    const customParam = params.get('custom');
+    const viewParam = params.get('view');
+
+    if (presetParam) {
+      const found =
+        getPresetById(presetParam) ||
+        getCustomPresets().find((p) => p.id === presetParam);
+      if (found && (!found.requiresPro || isPro)) {
+        handlePresetSelect(found);
+      }
+    }
+    if (targetMbParam) {
+      const mb = parseInt(targetMbParam, 10);
+      if (!isNaN(mb) && mb > 0) {
+        handleSizeSettingChange('limit', 'custom', mb, true);
+        setIsSizeCardExpanded(true);
+      }
+    }
+    if (customParam === '1') {
+      setShowAdvancedOutput(true);
+    }
+    if (viewParam === 'queue') {
+      setTimeout(() => {
+        queueSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPro]);
+
+  const handleQuickActionSelect = (action: QuickActionItem) => {
+    setActiveQuickActionId(action.id);
+    const preset = getPresetById(action.presetId);
+    if (preset) {
+      handlePresetSelect(preset);
+    }
+    if (action.enableTargetSize) {
+      const mb = action.defaultTargetSizeMb || 25;
+      const presetKey =
+        action.id === 'whatsapp'
+          ? 'whatsapp'
+          : action.id === 'discord'
+          ? 'discord'
+          : 'custom';
+      handleSizeSettingChange('limit', presetKey, mb, true);
+      setIsSizeCardExpanded(true);
+    } else if (action.id !== 'whatsapp' && action.id !== 'discord') {
+      handleSizeSettingChange('auto', 'auto', targetSizeMb, false);
+    }
+    if (action.openCustomControls) {
+      setShowAdvancedOutput(true);
+    }
+  };
+
+  const handleBrowseFolderClick = async () => {
+    if (isDesktopApp()) {
+      try {
+        const selected = await pickDesktopFolderFiles();
+        if (selected && selected.length > 0) {
+          await handleDesktopPathsAdded(selected);
+        }
+      } catch (err) {
+        console.error('[converter] pickDesktopFolderFiles failed:', err);
+      }
+    } else {
+      folderInputRef.current?.click();
+    }
+  };
+
+  const workflowProgress = useMemo((): {
+    currentStep: WorkflowStep;
+    completedSteps: WorkflowStep[];
+  } => {
+    if (jobs.length === 0) {
+      return { currentStep: 'import', completedSteps: [] };
+    }
+    const anyConverting = jobs.some((j) => j.status === 'converting');
+    const allCompleted = jobs.every((j) => j.status === 'completed');
+    if (allCompleted) {
+      return {
+        currentStep: 'export',
+        completedSteps: ['import', 'destination', 'review', 'convert', 'export'],
+      };
+    }
+    if (anyConverting) {
+      return {
+        currentStep: 'convert',
+        completedSteps: ['import', 'destination', 'review'],
+      };
+    }
+    return {
+      currentStep: 'review',
+      completedSteps: ['import', 'destination'],
+    };
+  }, [jobs]);
+
   const handlePresetSelect = (preset: CreatorPreset) => {
     if (preset.requiresPro && !isPro) {
-      alert('This preset requires Vimora Pro for 4K / Archival encoding.');
+      setUpgradePrompt(
+        `${preset.name} is a Vimora Pro preset. Free includes unlimited 1080p exports and GPU acceleration.`
+      );
       return;
     }
     setSelectedPreset(preset);
     setSelectedFormat(preset.outputFormat);
     setIsDropdownOpen(false);
+    if (preset.isCustom) {
+      setShowAdvancedOutput(true);
+    }
 
     const isVertical = preset.resolution && (() => {
       const p = preset.resolution.split('x');
@@ -246,20 +538,19 @@ export default function ConverterPage() {
     let activeSizePreset = selectedSizePreset;
     let activeSizeMb = targetSizeMb;
 
-    if (preset.id === 'discord_compress') {
+    if (preset.maxFileSizeMb && preset.maxFileSizeMb > 0) {
       activeSizeMode = 'limit';
-      activeSizePreset = 'discord';
-      activeSizeMb = 25;
+      activeSizePreset =
+        preset.id === 'discord_compress'
+          ? 'discord'
+          : preset.id === 'whatsapp_compress'
+          ? 'whatsapp'
+          : 'social';
+      activeSizeMb = preset.maxFileSizeMb;
       setSizeLimitMode('limit');
-      setSelectedSizePreset('discord');
-      setTargetSizeMb(25);
-    } else if (preset.id === 'whatsapp_compress') {
-      activeSizeMode = 'limit';
-      activeSizePreset = 'whatsapp';
-      activeSizeMb = 16;
-      setSizeLimitMode('limit');
-      setSelectedSizePreset('whatsapp');
-      setTargetSizeMb(16);
+      setSelectedSizePreset(activeSizePreset);
+      setTargetSizeMb(activeSizeMb);
+      setTargetSizeInput(activeSizeMb.toString());
     }
 
     // Update all queued jobs to reflect newly selected preset
@@ -319,12 +610,17 @@ export default function ConverterPage() {
   const handleFilesAdded = (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
-    // Free plan restriction: max 5 files per batch
+    // Fair Free plan batch limit (3 files per batch; Pro is unlimited)
     const currentCount = jobs.length;
-    const allowedNew = isPro ? files.length : Math.max(0, 5 - currentCount);
+    const batchCheck = checkBatchLimitEntitlement(isPro, currentCount, files.length);
+    const allowedNew = isPro
+      ? files.length
+      : Math.max(0, FREE_TIER_LIMITS.maxBatchFiles - currentCount);
 
-    if (!isPro && files.length > allowedNew) {
-      alert(`Free Plan allows up to 5 files per batch. Adding ${allowedNew} files. Upgrade to Pro for unlimited batch processing!`);
+    if (!batchCheck.allowed) {
+      if (hasCompletedFirstConversion() || currentCount >= FREE_TIER_LIMITS.maxBatchFiles) {
+        setUpgradePrompt(batchCheck.reason || 'Upgrade to Pro for unlimited batch queues.');
+      }
     }
 
     const newJobs: ConversionJob[] = [];
@@ -375,10 +671,15 @@ export default function ConverterPage() {
         sizeLimitPreset: sizeLimitMode === 'auto' ? 'auto' : selectedSizePreset,
       };
 
+      const newJobOptions: ConversionOptions = options;
+      if (isDuplicateJob([...jobs, ...newJobs], fileInfo.path || fileInfo.name, newJobOptions)) {
+        continue;
+      }
+
       newJobs.push({
         id: 'job_' + Math.random().toString(36).substring(2, 9),
         file: fileInfo,
-        options,
+        options: newJobOptions,
         status: 'queued',
         progress: { percent: 0 },
       });
@@ -469,11 +770,131 @@ export default function ConverterPage() {
     setJobs((prev) => [...prev, ...newJobs]);
   };
 
+  const handleDesktopPathsAdded = async (paths: string[]) => {
+    if (!paths || paths.length === 0) return;
+
+    // Fair Free plan batch limit (3 files per batch; Pro is unlimited)
+    const currentCount = jobs.length;
+    const batchCheck = checkBatchLimitEntitlement(isPro, currentCount, paths.length);
+    const allowedNew = isPro
+      ? paths.length
+      : Math.max(0, FREE_TIER_LIMITS.maxBatchFiles - currentCount);
+
+    if (!batchCheck.allowed) {
+      if (hasCompletedFirstConversion() || currentCount >= FREE_TIER_LIMITS.maxBatchFiles) {
+        setUpgradePrompt(batchCheck.reason || 'Upgrade to Pro for unlimited batch queues.');
+      }
+    }
+
+    const newJobs: ConversionJob[] = [];
+    const countToAdd = Math.min(paths.length, allowedNew);
+
+    for (let i = 0; i < countToAdd; i++) {
+      const filePath = paths[i];
+      const name = filePath.split(/[\\/]/).pop() || filePath;
+      const isVideo = /\.(mp4|mov|mkv|avi|webm|wmv|flv|m4v|ts|mts)$/i.test(name);
+      const isAudio = /\.(mp3|wav|aac|flac|ogg|m4a|wma|opus|aiff)$/i.test(name);
+      const fileId = 'file_' + Math.random().toString(36).substring(2, 9);
+
+      const fileInfo: MediaFileInfo = {
+        id: fileId,
+        name,
+        path: filePath,
+        sizeBytes: 0,
+        format: name.split('.').pop()?.toLowerCase() || 'unknown',
+        hasVideo: isVideo,
+        hasAudio: isAudio || isVideo,
+      };
+
+      const isVertical = selectedPreset.resolution && (() => {
+        const p = selectedPreset.resolution.split('x');
+        return p.length === 2 && parseInt(p[1], 10) > parseInt(p[0], 10);
+      })();
+      const activeFraming = selectedPreset.aspectRatioMode || (isVertical ? framingMode : 'pad_black');
+
+      const options: ConversionOptions = {
+        outputFormat: selectedFormat,
+        presetId: selectedPreset.id,
+        quality: selectedPreset.quality || 'high',
+        videoCodec: selectedPreset.videoCodec,
+        audioCodec: selectedPreset.audioCodec,
+        resolution: selectedPreset.resolution,
+        fps: selectedPreset.fps,
+        videoBitrate: selectedPreset.videoBitrate,
+        audioBitrate: selectedPreset.audioBitrate,
+        audioSampleRate: selectedPreset.audioSampleRate,
+        audioChannels: selectedPreset.audioChannels,
+        normalizeAudio: false,
+        maintainAspect: selectedPreset.maintainAspect,
+        aspectRatioMode: activeFraming,
+        outputDirectory: outputDir,
+        targetSizeMb: sizeLimitMode === 'auto' ? undefined : targetSizeMb,
+        sizeLimitPreset: sizeLimitMode === 'auto' ? 'auto' : selectedSizePreset,
+      };
+
+      const newJobOptions: ConversionOptions = options;
+      if (isDuplicateJob([...jobs, ...newJobs], fileInfo.path || fileInfo.name, newJobOptions)) {
+        continue;
+      }
+
+      newJobs.push({
+        id: 'job_' + Math.random().toString(36).substring(2, 9),
+        file: fileInfo,
+        options: newJobOptions,
+        status: 'queued',
+        progress: { percent: 0 },
+      });
+
+      // Asynchronously probe accurate local file streams & metadata directly
+      probeDesktopMedia(filePath).then((data) => {
+        if (!data) return;
+        setJobs((curr) =>
+          curr.map((j) =>
+            j.file.id === fileId
+              ? {
+                  ...j,
+                  file: {
+                    ...j.file,
+                    sizeBytes: data.sizeBytes || j.file.sizeBytes,
+                    width: data.width || j.file.width,
+                    height: data.height || j.file.height,
+                    fps: data.fps || j.file.fps,
+                    videoCodec: data.videoCodec || j.file.videoCodec,
+                    audioCodec: data.audioCodec || j.file.audioCodec,
+                    durationSeconds: data.durationSeconds || j.file.durationSeconds,
+                  },
+                }
+              : j
+          )
+        );
+      }).catch((err) => console.warn('[converter] probeDesktopMedia failed:', err));
+    }
+
+    setJobs((prev) => [...prev, ...newJobs]);
+  };
+
+  handleDesktopPathsRef.current = handleDesktopPathsAdded;
+
+  const handleBrowseClick = async () => {
+    if (isDesktopApp()) {
+      try {
+        const selected = await pickDesktopFiles();
+        if (selected && selected.length > 0) {
+          await handleDesktopPathsAdded(selected);
+        }
+      } catch (err) {
+        console.error('[converter] pickDesktopFiles failed:', err);
+      }
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files) {
+    if (!isDesktopApp() && e.dataTransfer.files) {
       handleFilesAdded(e.dataTransfer.files);
     }
   };
@@ -512,45 +933,69 @@ export default function ConverterPage() {
       const rawFile = rawFilesRef.current.get(job.file.id);
       const inputPath = job.file.path || (rawFile as any)?.path;
 
-      if (isDesktopApp() && inputPath) {
-        // Desktop native direct hardware conversion
-        const outDir = job.options.outputDirectory || 'Downloads';
-        const ext = job.options.outputFormat.toLowerCase();
-        const baseName = job.options.customOutputName || job.file.name.replace(/\.[^/.]+$/, '');
-        const outputPath = `${outDir}/${baseName}.${ext}`;
+      if (isDesktopApp()) {
+        const isAbsolute = inputPath && (inputPath.includes(':') || inputPath.startsWith('/') || inputPath.startsWith('\\\\'));
+        if (!isAbsolute) {
+          throw new Error('Please click "Browse" or drop the file directly into the app to use its full local path for conversion.');
+        }
 
-        const rawArgs = buildSafeFfmpegArgs({
-          inputPath,
-          outputPath,
+        // Desktop native direct hardware conversion
+        let outDir = job.options.outputDirectory;
+        if (!outDir || outDir === 'Downloads') {
+          outDir = (await getDesktopDownloadDir()) || '';
+        }
+        if (!outDir && inputPath) {
+          const lastSlash = Math.max(inputPath.lastIndexOf('/'), inputPath.lastIndexOf('\\'));
+          outDir = lastSlash > 0 ? inputPath.substring(0, lastSlash) : '.';
+        }
+        const ext = job.options.outputFormat.toLowerCase();
+        const appSettings = getAppSettings();
+        const generatedFileName = job.options.customOutputName
+          ? `${job.options.customOutputName}.${ext}`
+          : generateOutputFilename({
+              originalFileName: job.file.name,
+              outputFormat: ext,
+              preset: selectedPreset,
+              resolution: job.options.resolution || selectedPreset.resolution,
+              pattern: appSettings.filenamePattern,
+            });
+        const baseName = generatedFileName.replace(/\.[^/.]+$/, '');
+        const normalizedDir = outDir ? outDir.replace(/[\\/]+$/, '') : '.';
+        const outputPath = `${normalizedDir}/${generatedFileName}`;
+
+        const gpuEnabled = Boolean(
+          gpuCaps?.hasGpu &&
+          getAppSettings().gpuAccelerationEnabled &&
+          !(job.options.targetSizeMb && job.options.strictTwoPass)
+        );
+        const useTwoPass = shouldUseCpuTwoPass({
           options: job.options,
           gpuCaps: gpuCaps || undefined,
-          enableGpu: isPro,
+          enableGpu: gpuEnabled,
           durationSeconds: job.file.durationSeconds,
         });
-
-        // Insert -progress pipe:1 before outputPath
-        const outIdx = rawArgs.length - 1;
-        const ffmpegArgs = [...rawArgs.slice(0, outIdx), '-progress', 'pipe:1', rawArgs[outIdx]];
 
         controller.signal.addEventListener('abort', () => {
           cancelDesktopConversion(job.id);
         });
 
-        await convertDesktopMedia({
-          jobId: job.id,
-          inputPath,
-          outputPath,
-          args: ffmpegArgs,
-          durationSeconds: job.file.durationSeconds,
-          onProgress: (p) => {
+        const makeProgressHandler =
+          (minPct: number, maxPct: number, stagePrefix?: string) =>
+          (p: {
+            percentage: number;
+            fps: number;
+            speed: string;
+            outTimeSeconds: number;
+            totalDurationSeconds: number;
+          }) => {
             setJobs((prev) =>
               prev.map((j) => {
                 if (j.id !== jobId) return j;
-                const percent = p.percentage;
+                const scaledPercent = Math.round(minPct + (p.percentage / 100) * (maxPct - minPct));
                 const currentTime = p.outTimeSeconds;
                 const totalTime = p.totalDurationSeconds || j.file.durationSeconds || 0;
                 let timeRemaining: string | undefined;
-                if (percent > 0 && percent < 100 && totalTime > 0) {
+                if (p.percentage > 0 && p.percentage < 100 && totalTime > 0) {
                   const rem = Math.max(0, totalTime - currentTime);
                   const remM = Math.floor(rem / 60);
                   const remS = Math.floor(rem % 60);
@@ -559,9 +1004,9 @@ export default function ConverterPage() {
                 return {
                   ...j,
                   progress: {
-                    percent,
+                    percent: scaledPercent,
                     currentFps: p.fps,
-                    speed: p.speed,
+                    speed: stagePrefix ? `${stagePrefix} • ${p.speed}` : p.speed,
                     currentTimeSeconds: currentTime,
                     totalTimeSeconds: totalTime,
                     timeRemaining,
@@ -569,23 +1014,99 @@ export default function ConverterPage() {
                 };
               })
             );
-          },
-        });
+          };
+
+        if (useTwoPass) {
+          const isWin = inputPath.includes('\\') || /^[a-zA-Z]:/.test(inputPath);
+          const nullTarget = isWin ? 'NUL' : '/dev/null';
+          const passLogPrefix = `${normalizedDir}/${baseName}_${job.id}_2pass`;
+          const { pass1Args, pass2Args } = buildTwoPassFfmpegArgs(
+            {
+              inputPath,
+              outputPath,
+              options: job.options,
+              gpuCaps: gpuCaps || undefined,
+              enableGpu: false,
+              durationSeconds: job.file.durationSeconds,
+            },
+            passLogPrefix,
+            nullTarget
+          );
+
+          const p1OutIdx = pass1Args.length - 1;
+          const p1Args = [...pass1Args.slice(0, p1OutIdx), '-progress', 'pipe:1', pass1Args[p1OutIdx]];
+          await convertDesktopMedia({
+            jobId: job.id,
+            inputPath,
+            outputPath: nullTarget,
+            args: p1Args,
+            durationSeconds: job.file.durationSeconds,
+            onProgress: makeProgressHandler(0, 45, 'Pass 1/2'),
+          });
+
+          const p2OutIdx = pass2Args.length - 1;
+          const p2Args = [...pass2Args.slice(0, p2OutIdx), '-progress', 'pipe:1', pass2Args[p2OutIdx]];
+          await convertDesktopMedia({
+            jobId: job.id,
+            inputPath,
+            outputPath,
+            args: p2Args,
+            durationSeconds: job.file.durationSeconds,
+            onProgress: makeProgressHandler(45, 100, 'Pass 2/2'),
+          });
+        } else {
+          const rawArgs = buildSafeFfmpegArgs({
+            inputPath,
+            outputPath,
+            options: job.options,
+            gpuCaps: gpuCaps || undefined,
+            enableGpu: gpuEnabled,
+            durationSeconds: job.file.durationSeconds,
+          });
+          const outIdx = rawArgs.length - 1;
+          const ffmpegArgs = [...rawArgs.slice(0, outIdx), '-progress', 'pipe:1', rawArgs[outIdx]];
+
+          await convertDesktopMedia({
+            jobId: job.id,
+            inputPath,
+            outputPath,
+            args: ffmpegArgs,
+            durationSeconds: job.file.durationSeconds,
+            onProgress: makeProgressHandler(0, 100),
+          });
+        }
+
+        const realOutputBytes = await getDesktopFileSize(outputPath);
+        const outputSizeBytes = realOutputBytes !== null ? realOutputBytes : 0;
+        const bytesSaved =
+          realOutputBytes !== null && job.file.sizeBytes > 0
+            ? Math.max(0, job.file.sizeBytes - realOutputBytes)
+            : 0;
+        const sizeValidation =
+          job.options.targetSizeMb && realOutputBytes !== null
+            ? validateTargetSizeOutput(realOutputBytes, job.options.targetSizeMb)
+            : undefined;
 
         const completedJob: ConversionJob = {
           ...job,
           status: 'completed',
           progress: { percent: 100 },
           outputPath,
-          outputSizeBytes: Math.round(job.file.sizeBytes * 0.75),
-          bytesSaved: Math.round(job.file.sizeBytes * 0.25),
+          outputSizeBytes,
+          bytesSaved,
+          sizeValidation,
           downloadUrl: undefined,
           completedAt: Date.now(),
-          encoderUsed: gpuCaps?.hasGpu && isPro ? gpuCaps.supportedVideoEncoders[0] : 'libx264',
-          isGpuAccelerated: Boolean(gpuCaps?.hasGpu && isPro),
+          encoderUsed: gpuEnabled && gpuCaps?.hasGpu ? gpuCaps.supportedVideoEncoders[0] : 'libx264',
+          isGpuAccelerated: gpuEnabled,
         };
 
         setJobs((prev) => prev.map((j) => (j.id === jobId ? completedJob : j)));
+        markFirstConversionCompleted();
+        if (job.startedAt && job.file.durationSeconds) {
+          const elapsedSec = Math.max(0.5, (Date.now() - job.startedAt) / 1000);
+          recordLocalBenchmark(gpuEnabled, job.file.durationSeconds / elapsedSec);
+        }
 
         addLocalHistoryRecord({
           id: completedJob.id,
@@ -597,6 +1118,7 @@ export default function ConverterPage() {
           bytesSaved: completedJob.bytesSaved || 0,
           outputPath,
           presetUsed: selectedPreset.name,
+          presetId: selectedPreset.id,
           encoderUsed: completedJob.encoderUsed || 'libx264',
           isGpuAccelerated: Boolean(completedJob.isGpuAccelerated),
           status: 'completed',
@@ -626,16 +1148,18 @@ export default function ConverterPage() {
           body: formData,
           headers: {
             'Accept': 'application/x-ndjson',
+            'x-vimora-plan': isPro ? 'pro' : 'free',
           },
           signal: controller.signal,
         });
       } else {
-        // Desktop / absolute path mode
+        // Direct path mode via web API
         res = await fetch('/api/convert?stream=true', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/x-ndjson',
+            'x-vimora-plan': isPro ? 'pro' : 'free',
           },
           body: JSON.stringify({
             inputPath: job.file.path,
@@ -650,7 +1174,15 @@ export default function ConverterPage() {
       if (!res.ok) {
         if (controller.signal.aborted) return;
         const errText = await res.text();
-        throw new Error(errText || `Conversion failed: HTTP ${res.status}`);
+        if (res.status === 413) {
+          throw new Error('File exceeds web server upload limit (HTTP 413). Please use the Vimora Desktop app for unlimited offline conversions of large files.');
+        }
+        let parsedMessage = '';
+        try {
+          const parsed = JSON.parse(errText);
+          parsedMessage = parsed.error?.message || (typeof parsed.error === 'string' ? parsed.error : '');
+        } catch {}
+        throw new Error(parsedMessage || errText || `Conversion failed: HTTP ${res.status}`);
       }
 
       let data: any = null;
@@ -730,20 +1262,34 @@ export default function ConverterPage() {
         throw new Error(data?.error || 'Conversion failed to produce output');
       }
 
+      const realOutputSize = typeof data.outputSizeBytes === 'number' ? data.outputSizeBytes : 0;
+      const webSizeValidation =
+        job.options.targetSizeMb && realOutputSize > 0
+          ? validateTargetSizeOutput(realOutputSize, job.options.targetSizeMb)
+          : undefined;
+      const webGpuUsed = Boolean(gpuCaps?.hasGpu && gpuCaps.type !== 'cpu');
+
       const completedJob: ConversionJob = {
         ...job,
         status: 'completed',
         progress: { percent: 100 },
         outputPath: data.outputPath,
-        outputSizeBytes: data.outputSizeBytes || Math.round(job.file.sizeBytes * 0.75),
-        bytesSaved: Math.max(0, job.file.sizeBytes - (data.outputSizeBytes || job.file.sizeBytes * 0.75)),
+        outputSizeBytes: realOutputSize,
+        bytesSaved: realOutputSize > 0 ? Math.max(0, job.file.sizeBytes - realOutputSize) : 0,
+        sizeValidation: webSizeValidation,
         downloadUrl: data.downloadUrl,
         completedAt: Date.now(),
-        encoderUsed: gpuCaps?.hasGpu && isPro ? gpuCaps.supportedVideoEncoders[0] : 'libx264',
-        isGpuAccelerated: Boolean(gpuCaps?.hasGpu && isPro),
+        encoderUsed: webGpuUsed && gpuCaps ? gpuCaps.supportedVideoEncoders[0] : 'libx264',
+        isGpuAccelerated: webGpuUsed,
       };
 
       setJobs((prev) => prev.map((j) => (j.id === jobId ? completedJob : j)));
+      markFirstConversionCompleted();
+      if (job.startedAt && (data.durationSeconds || job.file.durationSeconds)) {
+        const dur = data.durationSeconds || job.file.durationSeconds || 0;
+        const elapsedSec = Math.max(0.5, (Date.now() - job.startedAt) / 1000);
+        if (dur > 0) recordLocalBenchmark(webGpuUsed, dur / elapsedSec);
+      }
 
       addLocalHistoryRecord({
         id: completedJob.id,
@@ -755,6 +1301,7 @@ export default function ConverterPage() {
         bytesSaved: completedJob.bytesSaved || 0,
         outputPath: completedJob.outputPath || '',
         presetUsed: selectedPreset.name,
+        presetId: selectedPreset.id,
         encoderUsed: completedJob.encoderUsed || 'libx264',
         isGpuAccelerated: Boolean(completedJob.isGpuAccelerated),
         status: 'completed',
@@ -938,552 +1485,321 @@ export default function ConverterPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 pt-8 space-y-8">
+      <main className="max-w-7xl mx-auto px-6 pt-6 space-y-6">
         {activeTab === 'workspace' ? (
           <>
-            {/* Presets Selector Header */}
-        <section className="bg-white rounded-xl p-6 border border-slate-200 shadow-xs relative">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-            <div>
-              <h2 className="text-base font-bold font-sans flex items-center gap-2 text-slate-900">
-                <Sliders className="w-4 h-4 text-[#0B6FFB]" /> Platform & Creator Encoding Presets
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Choose an optimized conversion preset for YouTube, TikTok, Instagram, X / Twitter, Discord, WhatsApp, or Studio Master.
-              </p>
-            </div>
-            <div className="flex flex-col items-start sm:items-end gap-1.5 shrink-0">
-              {!isPro && (
-                <Link
-                  href="/pricing"
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#0B6FFB] hover:bg-[#0958cc] text-white px-3.5 py-2 rounded-md transition-colors shadow-xs self-start sm:self-auto"
-                >
-                  <Lock className="w-3.5 h-3.5" /> Unlock 4K & GPU Presets
-                </Link>
-              )}
-              <span className="text-[11px] font-medium text-slate-500 flex items-center gap-1 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200/60">
-                <Cpu className="w-3 h-3 text-[#0B6FFB] shrink-0" />
-                {getHardwareStatusText(gpuCaps, isPro)}
-              </span>
-            </div>
-          </div>
+            {/* Local Privacy & Hardware Status Strip */}
+            <WorkstationStatusStrip
+              gpuCaps={gpuCaps}
+              onRecheckHardware={handleRecheckHardware}
+              isRechecking={isRecheckingHw}
+            />
 
-          {/* Preset Dropdown */}
-          <div className="relative" ref={dropdownRef}>
-            <button
-              type="button"
-              onClick={() => setIsDropdownOpen((prev) => !prev)}
-              className="w-full flex items-center justify-between p-3.5 sm:p-4 rounded-2xl border border-slate-200 bg-slate-50/70 hover:bg-white hover:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-all shadow-sm group cursor-pointer"
+            {/* Contextual Non-Intrusive Upgrade Prompt */}
+            {upgradePrompt && (
+              <UpgradePromptBanner
+                message={upgradePrompt}
+                onDismiss={() => setUpgradePrompt(null)}
+              />
+            )}
+
+            {/* 5-Step Conversion Workflow Indicator */}
+            <WorkflowStepper
+              currentStep={workflowProgress.currentStep}
+              completedSteps={workflowProgress.completedSteps}
+            />
+
+            {/* Step 1: Import Media (Drag & Drop + Choose Files / Folder) */}
+            <section
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={handleDrop}
+              onClick={handleBrowseClick}
+              className={`border-2 border-dashed rounded-3xl p-8 sm:p-10 text-center transition-all cursor-pointer ${
+                dragActive
+                  ? 'border-[#0B6FFB] bg-blue-50/50 scale-[0.99]'
+                  : 'border-slate-300 bg-white hover:border-slate-400 hover:bg-slate-50/40'
+              }`}
             >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div className="shrink-0 drop-shadow-sm p-1 bg-white rounded-xl border border-slate-100 shadow-xs">
-                  <PlatformIcon id={selectedPreset.id} size={28} />
-                </div>
-                <div className="text-left min-w-0">
-                  <div className="flex items-center gap-2.5 flex-wrap">
-                    <span className="font-bold text-sm sm:text-base font-nunito text-slate-900 truncate">
-                      {selectedPreset.name}
-                    </span>
-                    <span className="px-2 py-0.5 rounded font-mono font-bold text-[11px] uppercase bg-slate-200 text-slate-700">
-                      {selectedPreset.outputFormat}
-                    </span>
-                    {selectedPreset.resolution && (
-                      <span className="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                        {selectedPreset.resolution}
-                      </span>
-                    )}
-                    {selectedPreset.fps && (
-                      <span className="text-[11px] font-mono text-slate-500 hidden md:inline-block">
-                        {selectedPreset.fps}fps
-                      </span>
-                    )}
-                  </div>
-                </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="video/*,audio/*,.mkv,.flac"
+                onChange={(e) => handleFilesAdded(e.target.files)}
+                className="hidden"
+              />
+              <input
+                ref={folderInputRef}
+                type="file"
+                multiple
+                // @ts-expect-error webkitdirectory is supported by Chromium/Safari/Firefox for folder picking
+                webkitdirectory=""
+                accept="video/*,audio/*,.mkv,.flac"
+                onChange={(e) => handleFilesAdded(e.target.files)}
+                className="hidden"
+              />
+              <div className="w-12 h-12 bg-slate-950 text-white rounded-2xl flex items-center justify-center mx-auto mb-3.5 shadow-md">
+                <UploadCloud className="w-6 h-6 text-[#0BB3FA]" />
               </div>
-
-              <div className="flex items-center gap-2 ml-3 shrink-0">
-                <span className="text-xs text-slate-400 font-medium hidden sm:inline-block">Change preset</span>
-                <div className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center text-slate-600 group-hover:text-slate-900 shadow-2xs">
-                  <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
-                </div>
-              </div>
-            </button>
-
-            {/* Dropdown Menu */}
-            {isDropdownOpen && (
-              <div className="absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl border border-slate-200 shadow-2xl z-50 overflow-hidden max-h-[380px] overflow-y-auto divide-y divide-slate-100 animate-in fade-in-0 duration-150">
-                {CREATOR_PRESETS.map((p) => {
-                  const isSelected = selectedPreset.id === p.id;
-                  const locked = p.requiresPro && !isPro;
-
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => handlePresetSelect(p)}
-                      className={`w-full text-left px-4 py-3 flex items-center justify-between gap-3 transition-colors cursor-pointer ${
-                        isSelected
-                          ? 'bg-slate-900 text-white'
-                          : locked
-                          ? 'hover:bg-blue-50/40 text-slate-800'
-                          : 'hover:bg-slate-50 text-slate-800'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="shrink-0 drop-shadow-sm">
-                          <PlatformIcon id={p.id} size={24} />
-                        </div>
-                        <span className={`font-semibold text-sm truncate font-nunito ${isSelected ? 'text-white' : 'text-slate-900'}`}>
-                          {p.name}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        {locked && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-[#0B6FFB]/10 text-[#0B6FFB] px-2 py-0.5 rounded">
-                            <Lock className="w-2.5 h-2.5" /> PRO
-                          </span>
-                        )}
-                        <span
-                          className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] uppercase ${
-                            isSelected
-                              ? 'bg-white/20 text-[#0BB3FA]'
-                              : 'bg-slate-100 text-slate-600'
-                          }`}
-                        >
-                          {p.outputFormat}
-                        </span>
-                        {p.resolution && (
-                          <span
-                            className={`text-[11px] font-mono hidden sm:inline-block ${
-                              isSelected ? 'text-slate-300' : 'text-slate-500'
-                            }`}
-                          >
-                            {p.resolution}
-                          </span>
-                        )}
-                        {isSelected && (
-                          <Check className="w-4 h-4 text-[#0B6FFB] shrink-0 ml-1" />
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {/* Quick Format Selector Pills (Grouped by Video & Audio Extraction) */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-4 pt-3.5 border-t border-slate-100 flex-wrap">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-slate-500 shrink-0">Video:</span>
-                {(['mp4', 'webm', 'mov'] as OutputFormat[]).map((fmt) => (
-                  <button
-                    key={fmt}
-                    type="button"
-                    onClick={() => handleFormatSelect(fmt)}
-                    className={`px-3 py-1 rounded-xl text-xs font-bold uppercase font-mono transition-all cursor-pointer ${
-                      selectedFormat === fmt
-                        ? 'bg-[#0B6FFB] text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {fmt}
-                  </button>
-                ))}
-              </div>
-
-              <div className="hidden sm:block text-slate-200">|</div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-slate-500 shrink-0">Audio Extraction:</span>
-                {(['mp3', 'wav', 'flac'] as OutputFormat[]).map((fmt) => (
-                  <button
-                    key={fmt}
-                    type="button"
-                    onClick={() => handleFormatSelect(fmt)}
-                    className={`px-3 py-1 rounded-xl text-xs font-bold uppercase font-mono transition-all cursor-pointer ${
-                      selectedFormat === fmt
-                        ? 'bg-[#0B6FFB] text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {fmt}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* 9:16 Vertical Framing Controls */}
-            {selectedPreset.resolution && (() => {
-              const parts = selectedPreset.resolution.split('x');
-              return parts.length === 2 && parseInt(parts[1], 10) > parseInt(parts[0], 10);
-            })() && (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 pt-3.5 border-t border-slate-100">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                    📱 9:16 Framing:
-                  </span>
-                  <span className="text-[11px] text-slate-500 hidden sm:inline">
-                    Choose how horizontal footage fills vertical TikTok/Reels
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => handleFramingModeChange('crop_fill')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      framingMode === 'crop_fill'
-                        ? 'bg-white text-slate-950 shadow-xs ring-1 ring-slate-200'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                    title="Crops extra horizontal edges to fill the 9:16 screen completely with zero black bars"
-                  >
-                    Crop to Fill (0 Black Bars)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleFramingModeChange('blur_pad')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      framingMode === 'blur_pad'
-                        ? 'bg-white text-slate-950 shadow-xs ring-1 ring-slate-200'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                    title="Preserves full horizontal width and fills top/bottom with stylish blurred video"
-                  >
-                    ✨ Blurred Background
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleFramingModeChange('pad_black')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                      framingMode === 'pad_black'
-                        ? 'bg-white text-slate-950 shadow-xs ring-1 ring-slate-200'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                    title="Maintains aspect ratio with classic black letterbox bars"
-                  >
-                    ⬛ Letterbox
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Target File Size & Compression Range Control Card */}
-            <div className="mt-4 pt-3.5 border-t border-slate-100">
-              <div className="rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden transition-all">
-                {/* Card Header with Toggle */}
-                <div
-                  onClick={() => setIsSizeCardExpanded((prev) => !prev)}
-                  className="p-3.5 sm:p-4 flex items-center justify-between gap-3 bg-gradient-to-r from-slate-50/80 to-white hover:bg-slate-50 transition-colors cursor-pointer select-none"
+              <h2 className="text-lg sm:text-xl font-extrabold text-slate-900">
+                Drop videos or audio here to export locally
+              </h2>
+              <p className="text-xs text-slate-500 mt-1.5 max-w-lg mx-auto">
+                Ready for <strong className="text-slate-800">{selectedPreset.name}</strong> (.{selectedFormat.toUpperCase()}). {getProcessingEngineMessage(gpuCaps)}
+              </p>
+              <div className="mt-4 flex items-center justify-center gap-2.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleBrowseClick();
+                  }}
+                  className="inline-flex items-center gap-2 text-xs font-bold text-white bg-slate-950 hover:bg-slate-800 px-4 py-2.5 rounded-xl transition-colors cursor-pointer shadow-xs"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-xl bg-[#0B6FFB]/10 text-[#0B6FFB] flex items-center justify-center shrink-0">
-                      <HardDrive className="w-4 h-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-bold text-slate-900 font-nunito">
-                          Target File Size & Limit
-                        </span>
-                        {sizeLimitMode === 'auto' ? (
-                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200/60 inline-flex items-center">
-                            Auto
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-[#0B6FFB] border border-blue-200 inline-flex items-center gap-1">
-                            <Check className="w-3 h-3 text-[#0B6FFB] stroke-[3]" />
-                            Target ≤ {targetSizeMb} MB
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                        {sizeLimitMode === 'auto'
-                          ? 'Converts automatically. Click to specify target MB for Discord, WhatsApp, or email.'
-                          : `FFmpeg calculates dynamic bitrates to keep output strictly under ${targetSizeMb} MB.`}
-                      </p>
-                    </div>
-                  </div>
+                  <UploadCloud className="w-3.5 h-3.5 text-[#0BB3FA]" />
+                  <span>Choose files</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleBrowseFolderClick();
+                  }}
+                  className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-4 py-2.5 rounded-xl transition-colors cursor-pointer"
+                >
+                  <FolderPlus className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Choose folder</span>
+                </button>
+              </div>
+            </section>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      aria-label={isSizeCardExpanded ? 'Collapse size settings' : 'Expand size settings'}
-                      className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors"
-                    >
-                      <ChevronDown
-                        className={`w-4 h-4 transition-transform duration-200 ${
-                          isSizeCardExpanded ? 'rotate-180' : ''
-                        }`}
-                      />
-                    </button>
-                  </div>
+            {/* Step 2: Choose Destination (Quick Actions + Grouped Destinations) */}
+            <section className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-2xs relative space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-[#0B6FFB]" />
+                    <span>Where is this video going?</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Pick a destination to apply optimal format, framing, and size limits automatically — no technical setup required.
+                  </p>
                 </div>
+                <Link
+                  href="/presets"
+                  className="text-xs font-bold text-[#0B6FFB] hover:text-[#0958cc] inline-flex items-center gap-1 shrink-0"
+                >
+                  <span>Browse all presets</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
 
-                {/* Expandable Body */}
-                {isSizeCardExpanded && (
-                  <div className="p-3.5 sm:p-4 pt-2 border-t border-slate-100/80 bg-white space-y-3.5 animate-in fade-in-0 duration-150">
-                    {/* Mode Selector Switch: Auto vs Custom Size */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleSizeSettingChange('auto', 'auto', targetSizeMb)}
-                        className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer flex items-center gap-2.5 ${
-                          sizeLimitMode === 'auto'
-                            ? 'border-[#0B6FFB] bg-blue-50/40 ring-1 ring-[#0B6FFB]'
-                            : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div
-                          className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                            sizeLimitMode === 'auto'
-                              ? 'border-[#0B6FFB] bg-[#0B6FFB]'
-                              : 'border-slate-300 bg-white'
+              {/* Quick-Action Destination Cards */}
+              <QuickActionGrid
+                activeQuickActionId={activeQuickActionId}
+                activePresetId={selectedPreset.id}
+                sizeLimitMode={sizeLimitMode}
+                onSelectQuickAction={handleQuickActionSelect}
+              />
+
+              {/* Grouped Destination Dropdown */}
+              <DestinationPresetPicker
+                selectedPreset={selectedPreset}
+                isPro={isPro}
+                isOpen={isDropdownOpen}
+                onToggle={() => setIsDropdownOpen((prev) => !prev)}
+                onSelect={(preset) => {
+                  setActiveQuickActionId(null);
+                  handlePresetSelect(preset);
+                }}
+                dropdownRef={dropdownRef}
+              />
+
+              {/* Progressive Disclosure: Custom / Advanced Output Format Controls */}
+              <div className="pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedOutput((prev) => !prev)}
+                  aria-expanded={showAdvancedOutput}
+                  className="flex items-center justify-between w-full text-left py-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
+                >
+                  <span>Custom container & format override (.{selectedFormat.toUpperCase()})</span>
+                  <ChevronDown
+                    className={`w-4 h-4 text-slate-400 transition-transform ${
+                      showAdvancedOutput ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                {showAdvancedOutput && (
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200/70 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-slate-500 shrink-0">Video:</span>
+                      {(['mp4', 'webm', 'mov'] as OutputFormat[]).map((fmt) => (
+                        <button
+                          key={fmt}
+                          type="button"
+                          onClick={() => handleFormatSelect(fmt)}
+                          className={`px-3 py-1 rounded-xl text-xs font-bold uppercase font-mono transition-all cursor-pointer ${
+                            selectedFormat === fmt
+                              ? 'bg-[#0B6FFB] text-white shadow-xs'
+                              : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
                           }`}
                         >
-                          {sizeLimitMode === 'auto' && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <span className="text-xs font-bold text-slate-900 block font-nunito">
-                            Auto
-                          </span>
-                          <span className="text-[11px] text-slate-500 block truncate">
-                            Converts automatically with no file size restrictions
-                          </span>
-                        </div>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleSizeSettingChange(
-                            'limit',
-                            selectedSizePreset === 'auto' ? 'discord' : selectedSizePreset,
-                            targetSizeMb || 25
-                          )
-                        }
-                        className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer flex items-center gap-2.5 ${
-                          sizeLimitMode === 'limit'
-                            ? 'border-[#0B6FFB] bg-blue-50/40 ring-1 ring-[#0B6FFB]'
-                            : 'border-slate-200 bg-slate-50/50 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div
-                          className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                            sizeLimitMode === 'limit'
-                              ? 'border-[#0B6FFB] bg-[#0B6FFB]'
-                              : 'border-slate-300 bg-white'
-                          }`}
-                        >
-                          {sizeLimitMode === 'limit' && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <span className="text-xs font-bold text-slate-900 block font-nunito">
-                            Target Size Limit / Range
-                          </span>
-                          <span className="text-[11px] text-slate-500 block truncate">
-                            Specify max MB for Discord, WhatsApp, or email
-                          </span>
-                        </div>
-                      </button>
+                          {fmt}
+                        </button>
+                      ))}
                     </div>
 
-                    {/* When Size Limit Mode is Active */}
-                    {sizeLimitMode === 'limit' && (
-                      <div className="pt-2 border-t border-slate-100 space-y-3">
-                        {/* Quick Limit Badges */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                          <span className="text-xs font-bold text-slate-700">Quick Limits:</span>
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {[
-                              { id: 'discord', label: 'Discord', mb: 25, hint: '<25MB free limit' },
-                              { id: 'whatsapp', label: 'WhatsApp', mb: 16, hint: '<16MB chat' },
-                              { id: 'email', label: 'Email', mb: 10, hint: '<10MB attachment' },
-                              { id: 'social', label: 'Social', mb: 50, hint: '<50MB clip' },
-                              { id: 'custom', label: 'Custom', mb: targetSizeMb, hint: 'Custom MB' },
-                            ].map((item) => {
-                              const isActive =
-                                selectedSizePreset === item.id ||
-                                (item.id !== 'custom' && selectedSizePreset !== 'custom' && targetSizeMb === item.mb);
-                              return (
-                                <button
-                                  key={item.id}
-                                  type="button"
-                                  onClick={() =>
-                                    handleSizeSettingChange(
-                                      'limit',
-                                      item.id as any,
-                                      item.id === 'custom' ? targetSizeMb : item.mb
-                                    )
-                                  }
-                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                                    isActive
-                                      ? 'bg-[#0B6FFB] text-white shadow-xs'
-                                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                                  }`}
-                                  title={item.hint}
-                                >
-                                  <span>{item.label}</span>
-                                  <span
-                                    className={`text-[10px] font-mono px-1 py-0.2 rounded ${
-                                      isActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'
-                                    }`}
-                                  >
-                                    ≤{item.id === 'custom' ? targetSizeMb : item.mb}MB
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
+                    <div className="hidden sm:block text-slate-300">|</div>
 
-                        {/* Custom Input Stepper & Slider */}
-                        <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/70 flex flex-col sm:flex-row items-center justify-between gap-3">
-                          <div className="flex items-center gap-2 w-full sm:w-auto">
-                            <span className="text-xs font-bold text-slate-700 shrink-0">Max Size:</span>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleSizeSettingChange(
-                                    'limit',
-                                    'custom',
-                                    Math.max(1, targetSizeMb - (targetSizeMb > 25 ? 5 : 1))
-                                  )
-                                }
-                                className="w-7 h-7 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-700 font-bold text-xs cursor-pointer shadow-2xs"
-                              >
-                                -
-                              </button>
-                              <div className="relative">
-                                <input
-                                  type="number"
-                                  min={1}
-                                  max={4000}
-                                  value={targetSizeMb}
-                                  onChange={(e) => {
-                                    const val = parseInt(e.target.value, 10);
-                                    if (!isNaN(val) && val > 0) {
-                                      handleSizeSettingChange('limit', 'custom', val);
-                                    }
-                                  }}
-                                  className="w-20 pl-2.5 pr-8 py-1 rounded-lg border border-slate-300 bg-white text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#0B6FFB]"
-                                />
-                                <span className="absolute right-2 top-1.5 text-[10px] font-bold text-slate-400 font-mono pointer-events-none">
-                                  MB
-                                </span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleSizeSettingChange(
-                                    'limit',
-                                    'custom',
-                                    targetSizeMb + (targetSizeMb >= 25 ? 5 : 1)
-                                  )
-                                }
-                                className="w-7 h-7 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-700 font-bold text-xs cursor-pointer shadow-2xs"
-                              >
-                                +
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Range Slider for Quick Adjustment */}
-                          <div className="flex items-center gap-2.5 w-full sm:w-60">
-                            <span className="text-[10px] text-slate-400 font-mono shrink-0">5MB</span>
-                            <input
-                              type="range"
-                              min={5}
-                              max={100}
-                              step={1}
-                              value={Math.min(100, Math.max(5, targetSizeMb))}
-                              onChange={(e) => {
-                                const val = parseInt(e.target.value, 10);
-                                handleSizeSettingChange('limit', 'custom', val);
-                              }}
-                              className="w-full accent-[#0B6FFB] cursor-pointer"
-                            />
-                            <span className="text-[10px] text-slate-400 font-mono shrink-0">100MB</span>
-                          </div>
-                        </div>
-
-                        {/* Explanatory Help Text */}
-                        <div className="flex items-start gap-2 text-[11px] text-slate-600 bg-blue-50/50 p-2.5 rounded-xl border border-blue-100/70">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-[#0B6FFB] stroke-[2.5] shrink-0 mt-0.5" />
-                          <span>
-                            Files will be converted with dynamically scaled bitrates and an absolute file size ceiling to ensure they stay under <strong>{targetSizeMb} MB</strong> without sacrificing audio voice clarity.
-                          </span>
-                        </div>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-slate-500 shrink-0">Audio:</span>
+                      {(['mp3', 'wav', 'flac', 'aac', 'ogg'] as OutputFormat[]).map((fmt) => (
+                        <button
+                          key={fmt}
+                          type="button"
+                          onClick={() => handleFormatSelect(fmt)}
+                          className={`px-3 py-1 rounded-xl text-xs font-bold uppercase font-mono transition-all cursor-pointer ${
+                            selectedFormat === fmt
+                              ? 'bg-[#0B6FFB] text-white shadow-xs'
+                              : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          {fmt}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
-            </div>
+
+              {/* Smart Repost 9:16 Vertical Framing & Pre-Export Platform Validation */}
+              <SmartVerticalPanel
+                file={jobs[0]?.file}
+                rawFile={jobs[0] ? rawFilesRef.current.get(jobs[0].file.id) : undefined}
+                options={
+                  jobs[0]?.options || {
+                    outputFormat: selectedFormat,
+                    presetId: selectedPreset.id,
+                    videoCodec: selectedPreset.videoCodec,
+                    audioCodec: selectedPreset.audioCodec,
+                    resolution: selectedPreset.resolution,
+                    fps: selectedPreset.fps,
+                    aspectRatioMode: framingMode,
+                    subjectFocus,
+                    cropPositionX,
+                    cropPositionY,
+                    targetSizeMb: sizeLimitMode === 'limit' ? targetSizeMb : undefined,
+                  }
+                }
+                preset={selectedPreset}
+                framingMode={framingMode}
+                subjectFocus={subjectFocus}
+                cropPositionX={cropPositionX}
+                cropPositionY={cropPositionY}
+                onFramingModeChange={handleFramingModeChange}
+                onSubjectFocusChange={handleSubjectFocusChange}
+                onCropPositionChange={handleCropPositionChange}
+              />
+
+            {/* Flagship Compress to Target Size Panel */}
+            <TargetSizePanel
+              mode={sizeLimitMode}
+              targetSizeMb={targetSizeMb}
+              targetSizeInput={targetSizeInput}
+              selectedSizePreset={selectedSizePreset}
+              qualityPreference={qualityPreference}
+              isExpanded={isSizeCardExpanded}
+              onToggleExpand={() => setIsSizeCardExpanded((prev) => !prev)}
+              onSizeSettingChange={handleSizeSettingChange}
+              onTargetSizeInputChange={setTargetSizeInput}
+              onQualityPreferenceChange={handleQualityPreferenceChange}
+              strictTwoPass={strictTwoPass}
+              onStrictTwoPassChange={handleStrictTwoPassChange}
+              hasGpu={Boolean(gpuCaps?.hasGpu && gpuCaps.type !== 'cpu')}
+              onApplyRecoveryAction={handleApplyRecoveryAction}
+              sampleFile={jobs[0]?.file}
+              outputFormat={selectedFormat}
+              resolution={jobs[0]?.options.resolution || selectedPreset.resolution}
+              fps={jobs[0]?.options.fps || selectedPreset.fps}
+              videoCodec={jobs[0]?.options.videoCodec || selectedPreset.videoCodec}
+              keepAudio={jobs[0]?.options.keepAudio !== false}
+            />
 
             {/* Live Preset Capabilities & Changes Preview */}
-            <div className="mt-4 pt-3.5 border-t border-slate-100 flex items-start gap-3 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/70">
+            <div className="pt-3.5 border-t border-slate-100 flex items-start gap-3 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/70">
               <div className="p-2 rounded-lg bg-[#0B6FFB]/10 text-[#0B6FFB] shrink-0 mt-0.5">
                 <Sliders className="w-4 h-4" />
               </div>
               <div className="space-y-1 min-w-0 text-xs">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-bold text-slate-900">Preset Settings:</span>
+                  <span className="font-bold text-slate-900">Selected Destination:</span>
                   <span className="font-bold text-[#0B6FFB]">{selectedPreset.name}</span>
                   <span className="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-mono text-[10px] font-bold uppercase">
-                    {selectedPreset.outputFormat} &bull; {selectedPreset.resolution || 'Native'}
+                    .{selectedFormat} &bull; {selectedPreset.resolution || 'Original resolution'}
                   </span>
                 </div>
                 <p className="text-slate-600 text-[11px] leading-relaxed">
-                  {['mp3', 'wav', 'flac'].includes(selectedFormat)
-                    ? `Extracts high-quality ${selectedFormat.toUpperCase()} audio while preserving the original voice volume and vocal fidelity.`
-                    : selectedPreset.id === 'tiktok_vertical' || selectedPreset.id === 'instagram_reel'
-                    ? 'Reframes horizontal or standard videos into full 9:16 vertical video (1080×1920) without black bars, tailored for TikTok, Reels, and Shorts.'
-                    : selectedPreset.id === 'instagram_feed'
-                    ? 'Reframes videos into full-screen 1:1 square canvas (1080×1080) for Instagram Feed posts without black letterboxing.'
-                    : `Encodes output as ${selectedPreset.outputFormat.toUpperCase()} at ${selectedPreset.resolution || 'source resolution'} with ${selectedPreset.videoCodec?.toUpperCase() || 'H264'} video while preserving original audio volume and vocal fidelity.`}
+                  {selectedPreset.description}
                 </p>
               </div>
             </div>
-          </div>
         </section>
 
-        {/* Drag & Drop Zone */}
-        <section
-          onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
-          onDragLeave={() => setDragActive(false)}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-3xl p-12 text-center transition-all cursor-pointer ${
-            dragActive
-              ? 'border-slate-950 bg-blue-50/50 scale-[0.99]'
-              : 'border-slate-300 bg-white hover:border-slate-400 hover:bg-slate-50/50'
-          }`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept="video/*,audio/*,.mkv,.flac"
-            onChange={(e) => handleFilesAdded(e.target.files)}
-            className="hidden"
-          />
-          <div className="w-14 h-14 bg-slate-950 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <UploadCloud className="w-7 h-7 text-[#0BB3FA]" />
-          </div>
-          <h3 className="text-xl font-bold font-nunito text-slate-900">
-            Drop your video or audio files here
-          </h3>
-          <p className="text-xs text-slate-500 mt-2 max-w-md mx-auto">
-            Targeting: <strong className="text-slate-800">{selectedPreset.name}</strong> ({selectedFormat.toUpperCase()}). {getProcessingEngineMessage(isPro, gpuCaps)}
-          </p>
-          <div className="mt-4 inline-flex items-center gap-2 text-xs font-bold text-slate-700 bg-slate-100 px-4 py-2 rounded-xl">
-            Click to Browse Files
-          </div>
-        </section>
+        {/* Recent Local Conversions Strip (when queue is empty) */}
+        {jobs.length === 0 && history.length > 0 && (
+          <section className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-[#0B6FFB]" />
+                <h3 className="text-sm font-extrabold text-slate-900">Recent Conversions</h3>
+              </div>
+              <Link
+                href="/history"
+                className="text-xs font-bold text-[#0B6FFB] hover:text-[#0958cc] inline-flex items-center gap-1"
+              >
+                <span>View all history</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {history.slice(0, 3).map((item) => (
+                <div
+                  key={item.id}
+                  className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/70 flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-900 truncate">
+                      {item.originalFileName}
+                    </p>
+                    <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                      {item.presetUsed || `.${item.outputFormat.toUpperCase()}`} • {formatSize(item.outputSizeBytes)}
+                    </p>
+                  </div>
+                  {item.presetId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const found = getPresetById(item.presetId);
+                        if (found) handlePresetSelect(found);
+                      }}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-slate-200 hover:border-[#0B6FFB] text-[11px] font-bold text-slate-700 hover:text-[#0B6FFB] shrink-0 cursor-pointer"
+                      title="Reuse this preset"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reuse</span>
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Queue & Pre-Conversion Review Anchor */}
+        <div ref={queueSectionRef} id="conversion-queue-section" />
 
         {/* Compact Read-Only Conversion Summary */}
         {jobs.length > 0 && (() => {
@@ -1505,7 +1821,7 @@ export default function ConverterPage() {
           let targetEncoder = 'H.264 (libx264)';
           if (isAudioTarget) {
             targetEncoder = selectedFormat === 'mp3' ? 'MP3 (libmp3lame)' : selectedFormat === 'wav' ? 'PCM (pcm_s16le)' : 'FLAC Lossless';
-          } else if (gpuCaps?.hasGpu && isPro) {
+          } else if (gpuCaps?.hasGpu && gpuCaps.type !== 'cpu') {
             if (gpuCaps.type === 'nvenc') targetEncoder = selectedPreset.videoCodec === 'hevc' ? 'HEVC (NVENC)' : 'H.264 (NVENC)';
             else if (gpuCaps.type === 'qsv') targetEncoder = selectedPreset.videoCodec === 'hevc' ? 'HEVC (QuickSync)' : 'H.264 (QuickSync)';
             else if (gpuCaps.type === 'amf') targetEncoder = selectedPreset.videoCodec === 'hevc' ? 'HEVC (AMF)' : 'H.264 (AMF)';
@@ -1737,11 +2053,39 @@ export default function ConverterPage() {
                       )}
 
                       {job.status === 'completed' && (
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
-                            <CheckCircle2 className="w-4 h-4" />
-                            Saved {formatSize(job.bytesSaved || 0)}
-                          </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {job.sizeValidation ? (
+                            <div
+                              title={job.sizeValidation.message}
+                              className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border ${
+                                job.sizeValidation.status === 'hit'
+                                  ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                  : job.sizeValidation.status === 'warning'
+                                  ? 'text-amber-800 bg-amber-50 border-amber-200'
+                                  : 'text-red-700 bg-red-50 border-red-200'
+                              }`}
+                            >
+                              {job.sizeValidation.status === 'hit' ? (
+                                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                              ) : (
+                                <AlertCircle className="w-4 h-4 shrink-0" />
+                              )}
+                              <span>
+                                {job.sizeValidation.status === 'hit'
+                                  ? `Target met (${job.sizeValidation.actualSizeMb} MB)`
+                                  : job.sizeValidation.status === 'warning'
+                                  ? `Slightly over (${job.sizeValidation.actualSizeMb} / ${job.sizeValidation.targetSizeMb} MB)`
+                                  : `Over target (${job.sizeValidation.actualSizeMb} / ${job.sizeValidation.targetSizeMb} MB)`}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
+                              <CheckCircle2 className="w-4 h-4" />
+                              {job.outputSizeBytes && job.outputSizeBytes > 0
+                                ? `${formatSize(job.outputSizeBytes)}${job.bytesSaved ? ` (-${formatSize(job.bytesSaved)})` : ''}`
+                                : 'Completed'}
+                            </div>
+                          )}
 
                           {job.downloadUrl && (
                             <a
@@ -1767,13 +2111,10 @@ export default function ConverterPage() {
                       )}
 
                       {job.status === 'failed' && (
-                        <div
-                          className="flex items-center gap-1.5 text-xs font-semibold text-red-700 bg-red-50 px-3 py-1.5 rounded-xl border border-red-200 max-w-xs truncate"
-                          title={job.errorMessage}
-                        >
-                          <AlertCircle className="w-4 h-4 shrink-0" />
-                          Failed: {job.errorMessage}
-                        </div>
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>Export failed</span>
+                        </span>
                       )}
 
                       {job.status === 'queued' && (
@@ -1802,6 +2143,14 @@ export default function ConverterPage() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Plain-English Error Display Card (Phase 9) */}
+                  {job.status === 'failed' && (
+                    <ErrorDisplayCard
+                      rawError={job.errorMessage}
+                      onRetryWithDifferentSettings={() => handleRetryWithDifferentSettings(job.id)}
+                    />
+                  )}
 
                   {/* Inline Expanded What Will Change Preview */}
                   {expandedJobId === job.id && (

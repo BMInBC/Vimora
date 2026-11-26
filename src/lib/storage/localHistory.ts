@@ -2,6 +2,7 @@ import { AppSettings, LocalHistoryRecord } from '../types';
 
 const DEFAULT_HISTORY_KEY = 'vimora_conversion_history_guest';
 const SETTINGS_KEY = 'vimora_app_settings';
+const QUEUE_SNAPSHOT_KEY = 'vimora_queue_snapshot';
 
 export function getHistoryStorageKey(userId?: string | null): string {
   if (userId && typeof userId === 'string' && userId.trim()) {
@@ -13,10 +14,14 @@ export function getHistoryStorageKey(userId?: string | null): string {
 export const DEFAULT_SETTINGS: AppSettings = {
   defaultOutputDirectory: '',
   gpuAccelerationEnabled: true,
+  gpuPreference: 'auto',
+  maxCpuThreads: 0,
+  keepOriginalFile: true,
+  filenamePattern: '{original_name}-{preset}-{resolution}.{ext}',
   autoOverwrite: false,
   preserveFolderStructure: false,
   theme: 'system',
-  telemetryOptIn: true,
+  telemetryOptIn: false,
   maxConcurrentJobs: 2,
 };
 
