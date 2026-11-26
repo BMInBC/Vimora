@@ -194,7 +194,7 @@ export default function PricingPage() {
                     </>
                   ) : (
                     <>
-                      Subscribe with Paystack (₦4,500/mo)
+                      Subscribe
                     </>
                   )}
                 </button>
