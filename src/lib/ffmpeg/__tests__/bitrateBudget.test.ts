@@ -235,4 +235,9 @@ test('CPU 2-pass triggers when GPU unavailable or strictTwoPass is enabled', () 
   assert.ok(twoPass.pass2Args.includes('2'));
   assert.ok(twoPass.pass2Args.includes('-c:a'));
   assert.equal(twoPass.pass2Args[twoPass.pass2Args.length - 1], 'C:/videos/output.mp4');
+
+  // Verify Pass 1 and Pass 2 use identical video bitrate (-b:v)
+  const p1Bv = twoPass.pass1Args[twoPass.pass1Args.indexOf('-b:v') + 1];
+  const p2Bv = twoPass.pass2Args[twoPass.pass2Args.indexOf('-b:v') + 1];
+  assert.equal(p1Bv, p2Bv);
 });

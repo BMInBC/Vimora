@@ -334,8 +334,27 @@ async fn tauri_convert_media(
     let active_procs = state.active_processes.clone();
 
     // Spawn async monitor in tokio blocking thread
+    let output_path_clone = output_path.clone();
     tokio::task::spawn_blocking(move || {
         let event_name = format!("conversion-progress-{}", job_id_clone);
+
+        // Drain stderr concurrently on its own thread so Windows pipe buffers never deadlock FFmpeg
+        let stderr_handle = std::thread::spawn(move || -> String {
+            let mut last_lines: Vec<String> = Vec::new();
+            if let Some(stderr_pipe) = stderr {
+                let r = BufReader::new(stderr_pipe);
+                for line in r.lines().flatten() {
+                    let trimmed = line.trim().to_string();
+                    if !trimmed.is_empty() {
+                        last_lines.push(trimmed);
+                        if last_lines.len() > 25 {
+                            last_lines.remove(0);
+                        }
+                    }
+                }
+            }
+            last_lines.join("\n")
+        });
 
         // Read stdout (where -progress pipe:1 writes)
         if let Some(stdout_pipe) = stdout {
@@ -366,16 +385,17 @@ async fn tauri_convert_media(
                         pct = ((out_time_seconds / duration_seconds) * 100.0).clamp(0.0, 99.0) as u32;
                     }
                     if trimmed == "progress=end" {
-                        pct = 100;
+                        pct = 99;
                     }
+                    // Never emit "completed" until child.wait() finishes and faststart muxing flushes to disk
                     let _ = app_handle.emit(&event_name, ConversionProgressPayload {
                         job_id: job_id_clone.clone(),
                         percentage: pct,
                         fps,
-                        speed: speed.clone(),
+                        speed: if trimmed == "progress=end" { "Finalizing...".to_string() } else { speed.clone() },
                         out_time_seconds,
                         total_duration_seconds: duration_seconds,
-                        status: if trimmed == "progress=end" { "completed".to_string() } else { "processing".to_string() },
+                        status: "processing".to_string(),
                         error: None,
                     });
                 }
@@ -383,15 +403,26 @@ async fn tauri_convert_media(
         }
 
         let status = child.wait();
+        let stderr_tail = stderr_handle.join().unwrap_or_default();
         let mut procs = active_procs.lock().unwrap();
         procs.remove(&job_id_clone);
 
-        let success = match status {
+        let process_ok = match status {
             Ok(s) => s.success(),
             Err(_) => false,
         };
 
-        if success {
+        let is_null_sink = output_path_clone.eq_ignore_ascii_case("NUL") || output_path_clone == "/dev/null";
+        let output_valid = if is_null_sink {
+            true
+        } else {
+            match std::fs::metadata(&output_path_clone) {
+                Ok(meta) => meta.len() > 0,
+                Err(_) => false,
+            }
+        };
+
+        if process_ok && output_valid {
             let _ = app_handle.emit(&event_name, ConversionProgressPayload {
                 job_id: job_id_clone.clone(),
                 percentage: 100,
@@ -403,14 +434,21 @@ async fn tauri_convert_media(
                 error: None,
             });
         } else {
-            let mut err_msg = "FFmpeg process exited with error".to_string();
-            if let Some(stderr_pipe) = stderr {
-                let r = BufReader::new(stderr_pipe);
-                let lines: Vec<String> = r.lines().flatten().collect();
-                if let Some(last) = lines.last() {
-                    err_msg = last.clone();
+            // Remove empty/corrupt 0-byte output file so user is never left with an unplayable file
+            if !is_null_sink {
+                if let Ok(meta) = std::fs::metadata(&output_path_clone) {
+                    if meta.len() == 0 {
+                        let _ = std::fs::remove_file(&output_path_clone);
+                    }
                 }
             }
+            let err_msg = if !stderr_tail.is_empty() {
+                stderr_tail
+            } else if process_ok && !output_valid {
+                "FFmpeg finished without writing valid video data (0-byte output).".to_string()
+            } else {
+                "FFmpeg process exited with error".to_string()
+            };
             let _ = app_handle.emit(&event_name, ConversionProgressPayload {
                 job_id: job_id_clone.clone(),
                 percentage: 0,

@@ -226,9 +226,9 @@ export async function POST(req: NextRequest) {
         nullTarget
       );
 
-      // Run Pass 1 synchronously before streaming Pass 2
+      // Run Pass 1 with stdio ignored so stderr pipe buffer can never deadlock FFmpeg
       const pass1Ok = await new Promise<boolean>((resolve) => {
-        const p1 = spawn(ffmpegBin, pass1Args);
+        const p1 = spawn(ffmpegBin, pass1Args, { stdio: 'ignore' });
         p1.on('close', (code) => resolve(code === 0));
         p1.on('error', () => resolve(false));
       });
@@ -368,6 +368,7 @@ export async function POST(req: NextRequest) {
 
           child.on('close', (code) => {
             req.signal.removeEventListener('abort', onAbort);
+            cleanupPassLogs();
 
             // Clean up temporary staged input
             if (tempInputPath && fs.existsSync(tempInputPath)) {
@@ -377,16 +378,30 @@ export async function POST(req: NextRequest) {
             if (code === 0 && fs.existsSync(outputPath)) {
               const elapsedSeconds = (Date.now() - startTime) / 1000;
               const stats = fs.statSync(outputPath);
-              sendLine({
-                type: 'complete',
-                success: true,
-                outputPath,
-                fileName: path.basename(outputPath),
-                outputSizeBytes: stats.size,
-                durationSeconds: elapsedSeconds,
-                downloadUrl: `/api/download?path=${encodeURIComponent(outputPath)}`,
-              });
+              if (stats.size > 0) {
+                sendLine({
+                  type: 'complete',
+                  success: true,
+                  outputPath,
+                  fileName: path.basename(outputPath),
+                  outputSizeBytes: stats.size,
+                  durationSeconds: elapsedSeconds,
+                  downloadUrl: `/api/download?path=${encodeURIComponent(outputPath)}`,
+                });
+              } else {
+                try { fs.unlinkSync(outputPath); } catch {}
+                sendLine({
+                  type: 'error',
+                  success: false,
+                  error: lastStderr || 'FFmpeg finished but produced an empty (0-byte) file. Please retry.',
+                });
+              }
             } else {
+              if (outputPath && fs.existsSync(outputPath)) {
+                try {
+                  if (fs.statSync(outputPath).size === 0) fs.unlinkSync(outputPath);
+                } catch {}
+              }
               sendLine({
                 type: 'error',
                 success: false,

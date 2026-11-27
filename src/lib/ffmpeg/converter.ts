@@ -314,26 +314,24 @@ export function buildTwoPassFfmpegArgs(
     cpuBaseArgs[outIdx],
   ];
 
-  // Pass 1: same video/filter/rate-control settings with audio disabled and null muxer
-  const pass1BaseArgs = buildSafeFfmpegArgs({
-    ...params,
-    enableGpu: false,
-    options: {
-      ...params.options,
-      keepAudio: false,
-    },
-  });
-  // Strip -movflags +faststart for null muxer compatibility
+  // Pass 1: derive directly from cpuBaseArgs so video bitrate (-b:v) matches Pass 2 identically,
+  // stripping only audio & movflags and routing to the null muxer
   const filteredPass1: string[] = [];
-  for (let i = 0; i < pass1BaseArgs.length - 1; i++) {
-    if (pass1BaseArgs[i] === '-movflags') {
+  const skipWithVal = new Set(['-c:a', '-b:a', '-ar', '-ac', '-movflags']);
+  for (let i = 0; i < cpuBaseArgs.length - 1; i++) {
+    const token = cpuBaseArgs[i];
+    if (skipWithVal.has(token)) {
       i++; // skip flag value
       continue;
     }
-    filteredPass1.push(pass1BaseArgs[i]);
+    if (token === '-an') {
+      continue;
+    }
+    filteredPass1.push(token);
   }
   const pass1Args = [
     ...filteredPass1,
+    '-an',
     '-pass',
     '1',
     '-passlogfile',
