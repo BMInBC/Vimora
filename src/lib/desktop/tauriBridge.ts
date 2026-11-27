@@ -72,6 +72,20 @@ export async function pickDesktopOutputDirectory(): Promise<string | null> {
 const SUPPORTED_MEDIA_EXT_REGEX =
   /\.(mp4|mov|mkv|webm|avi|wmv|flv|m4v|ts|mts|mp3|wav|aac|flac|ogg|m4a|wma|opus|aiff)$/i;
 
+export async function expandDesktopMediaPaths(paths: string[]): Promise<string[]> {
+  if (!isDesktopApp() || !paths || paths.length === 0) return [];
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const expanded = await invoke<string[]>('tauri_collect_media_files', { paths });
+    if (Array.isArray(expanded)) {
+      return expanded;
+    }
+  } catch (err) {
+    console.warn('[tauriBridge] tauri_collect_media_files failed, returning raw media paths:', err);
+  }
+  return paths.filter((p) => SUPPORTED_MEDIA_EXT_REGEX.test(p));
+}
+
 export async function pickDesktopFolderFiles(): Promise<string[]> {
   if (!isDesktopApp()) return [];
   try {
@@ -82,6 +96,9 @@ export async function pickDesktopFolderFiles(): Promise<string[]> {
       title: 'Select Folder Containing Video or Audio Files',
     });
     if (typeof folder !== 'string' || !folder) return [];
+
+    const fromRust = await expandDesktopMediaPaths([folder]);
+    if (fromRust.length > 0) return fromRust;
 
     const { readDir } = await import('@tauri-apps/plugin-fs');
     const entries = await readDir(folder);

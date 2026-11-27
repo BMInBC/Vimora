@@ -61,11 +61,16 @@ import {
   openDesktopFolder,
   pickDesktopFiles,
   pickDesktopFolderFiles,
+  expandDesktopMediaPaths,
   pickDesktopOutputDirectory,
   getDesktopDownloadDir,
   getDesktopFileSize,
   probeDesktopMedia,
 } from '@/lib/desktop/tauriBridge';
+import {
+  extractFilesFromDataTransfer,
+  filterMediaFiles,
+} from '@/lib/media/fileDrop';
 import {
   UploadCloud,
   FileVideo,
@@ -131,6 +136,7 @@ export default function ConverterPage() {
   const [showAdvancedOutput, setShowAdvancedOutput] = useState<boolean>(false);
   const [isRecheckingHw, setIsRecheckingHw] = useState<boolean>(false);
   const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleRecheckHardware = async () => {
@@ -355,8 +361,9 @@ export default function ConverterPage() {
     );
   };
 
-  // Ref for desktop paths handler to avoid stale closures in event listener
+  // Ref for desktop paths & browser files handlers to avoid stale closures in window listeners
   const handleDesktopPathsRef = useRef<(paths: string[]) => void>(() => {});
+  const handleFilesAddedRef = useRef<(files: FileList | File[] | null) => void>(() => {});
 
   useEffect(() => {
     detectGpuCapabilities().then(setGpuCaps);
@@ -398,6 +405,37 @@ export default function ConverterPage() {
         if (unlisten) unlisten();
       };
     }
+
+    // Browser mode: allow dropping files or folders anywhere on the page cleanly
+    const onWindowDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types?.includes('Files')) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        setDragActive(true);
+      }
+    };
+    const onWindowDragLeave = (e: DragEvent) => {
+      if (!e.relatedTarget) {
+        setDragActive(false);
+      }
+    };
+    const onWindowDrop = async (e: DragEvent) => {
+      if (!e.dataTransfer?.types?.includes('Files')) return;
+      e.preventDefault();
+      setDragActive(false);
+      const extracted = await extractFilesFromDataTransfer(e.dataTransfer);
+      handleFilesAddedRef.current(extracted);
+    };
+
+    window.addEventListener('dragover', onWindowDragOver);
+    window.addEventListener('dragleave', onWindowDragLeave);
+    window.addEventListener('drop', onWindowDrop);
+
+    return () => {
+      window.removeEventListener('dragover', onWindowDragOver);
+      window.removeEventListener('dragleave', onWindowDragLeave);
+      window.removeEventListener('drop', onWindowDrop);
+    };
   }, []);
 
   useEffect(() => {
@@ -607,8 +645,15 @@ export default function ConverterPage() {
     );
   };
 
-  const handleFilesAdded = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
+  const handleFilesAdded = (rawFiles: FileList | File[] | null) => {
+    const files = filterMediaFiles(rawFiles);
+    if (files.length === 0) {
+      if (rawFiles && (Array.isArray(rawFiles) ? rawFiles.length > 0 : rawFiles.length > 0)) {
+        setImportNotice('No supported video or audio files were found in that selection or folder.');
+      }
+      return;
+    }
+    setImportNotice(null);
 
     // Fair Free plan batch limit (3 files per batch; Pro is unlimited)
     const currentCount = jobs.length;
@@ -628,8 +673,8 @@ export default function ConverterPage() {
 
     for (let i = 0; i < countToAdd; i++) {
       const file = files[i];
-      const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|mkv|avi|webm)$/i.test(file.name);
-      const isAudio = file.type.startsWith('audio/') || /\.(mp3|wav|aac|flac|ogg|m4a)$/i.test(file.name);
+      const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|mkv|avi|webm|wmv|flv|m4v|ts|mts|3gp|ogv)$/i.test(file.name);
+      const isAudio = file.type.startsWith('audio/') || /\.(mp3|wav|aac|flac|ogg|m4a|wma|opus|aiff)$/i.test(file.name);
       const fileId = 'file_' + Math.random().toString(36).substring(2, 9);
 
       // Keep raw file for local browser staging
@@ -770,8 +815,16 @@ export default function ConverterPage() {
     setJobs((prev) => [...prev, ...newJobs]);
   };
 
-  const handleDesktopPathsAdded = async (paths: string[]) => {
-    if (!paths || paths.length === 0) return;
+  const handleDesktopPathsAdded = async (rawPaths: string[]) => {
+    if (!rawPaths || rawPaths.length === 0) return;
+
+    // Expand any dropped folders recursively into individual media file paths
+    const paths = await expandDesktopMediaPaths(rawPaths);
+    if (paths.length === 0) {
+      setImportNotice('No supported video or audio files were found in the dropped files or folder.');
+      return;
+    }
+    setImportNotice(null);
 
     // Fair Free plan batch limit (3 files per batch; Pro is unlimited)
     const currentCount = jobs.length;
@@ -874,6 +927,7 @@ export default function ConverterPage() {
   };
 
   handleDesktopPathsRef.current = handleDesktopPathsAdded;
+  handleFilesAddedRef.current = handleFilesAdded;
 
   const handleBrowseClick = async () => {
     if (isDesktopApp()) {
@@ -890,13 +944,14 @@ export default function ConverterPage() {
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (!isDesktopApp() && e.dataTransfer.files) {
-      handleFilesAdded(e.dataTransfer.files);
-    }
+    if (isDesktopApp()) return;
+
+    const extracted = await extractFilesFromDataTransfer(e.dataTransfer);
+    handleFilesAdded(extracted);
   };
 
   const removeJob = (id: string) => {
@@ -1511,8 +1566,24 @@ export default function ConverterPage() {
 
             {/* Step 1: Import Media (Drag & Drop + Choose Files / Folder) */}
             <section
-              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
-              onDragLeave={() => setDragActive(false)}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragActive(true);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+                setDragActive(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                  setDragActive(false);
+                }
+              }}
               onDrop={handleDrop}
               onClick={handleBrowseClick}
               className={`border-2 border-dashed rounded-3xl p-8 sm:p-10 text-center transition-all cursor-pointer ${
@@ -1526,7 +1597,10 @@ export default function ConverterPage() {
                 type="file"
                 multiple
                 accept="video/*,audio/*,.mkv,.flac"
-                onChange={(e) => handleFilesAdded(e.target.files)}
+                onChange={(e) => {
+                  handleFilesAdded(e.target.files);
+                  e.target.value = '';
+                }}
                 className="hidden"
               />
               <input
@@ -1535,19 +1609,28 @@ export default function ConverterPage() {
                 multiple
                 // @ts-expect-error webkitdirectory is supported by Chromium/Safari/Firefox for folder picking
                 webkitdirectory=""
-                accept="video/*,audio/*,.mkv,.flac"
-                onChange={(e) => handleFilesAdded(e.target.files)}
+                onChange={(e) => {
+                  handleFilesAdded(e.target.files);
+                  e.target.value = '';
+                }}
                 className="hidden"
               />
               <div className="w-12 h-12 bg-slate-950 text-white rounded-2xl flex items-center justify-center mx-auto mb-3.5 shadow-md">
                 <UploadCloud className="w-6 h-6 text-[#0BB3FA]" />
               </div>
               <h2 className="text-lg sm:text-xl font-extrabold text-slate-900">
-                Drop videos or audio here to export locally
+                Drop files or folders here to export locally
               </h2>
               <p className="text-xs text-slate-500 mt-1.5 max-w-lg mx-auto">
-                Ready for <strong className="text-slate-800">{selectedPreset.name}</strong> (.{selectedFormat.toUpperCase()}). {getProcessingEngineMessage(gpuCaps)}
+                Drag and drop individual videos, audio files, or entire folders — ready for{' '}
+                <strong className="text-slate-800">{selectedPreset.name}</strong> (.{selectedFormat.toUpperCase()}).{' '}
+                {getProcessingEngineMessage(gpuCaps)}
               </p>
+              {importNotice && (
+                <p className="mt-2.5 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 inline-block">
+                  {importNotice}
+                </p>
+              )}
               <div className="mt-4 flex items-center justify-center gap-2.5 flex-wrap">
                 <button
                   type="button"

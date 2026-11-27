@@ -253,6 +253,46 @@ async fn tauri_probe_media(file_path: String) -> Result<serde_json::Value, Strin
     }))
 }
 
+fn is_supported_media_path(path: &Path) -> bool {
+    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+        return false;
+    };
+    matches!(
+        ext.to_ascii_lowercase().as_str(),
+        "mp4" | "mov" | "mkv" | "webm" | "avi" | "wmv" | "flv" | "m4v" | "ts" | "mts"
+            | "3gp" | "ogv" | "mp3" | "wav" | "aac" | "flac" | "ogg" | "m4a" | "wma"
+            | "opus" | "aiff"
+    )
+}
+
+fn collect_media_recursive(path: &Path, depth: usize, out: &mut Vec<String>) {
+    if depth > 8 {
+        return;
+    }
+    if path.is_file() {
+        if is_supported_media_path(path) {
+            out.push(path.to_string_lossy().to_string());
+        }
+        return;
+    }
+    if path.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(path) {
+            for entry in entries.flatten() {
+                collect_media_recursive(&entry.path(), depth + 1, out);
+            }
+        }
+    }
+}
+
+#[tauri::command]
+async fn tauri_collect_media_files(paths: Vec<String>) -> Result<Vec<String>, String> {
+    let mut collected = Vec::new();
+    for raw in paths {
+        collect_media_recursive(Path::new(&raw), 0, &mut collected);
+    }
+    Ok(collected)
+}
+
 #[tauri::command]
 async fn tauri_open_folder(folder_path: String) -> Result<(), String> {
     let p = Path::new(&folder_path);
@@ -474,6 +514,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             tauri_get_gpu_caps,
             tauri_probe_media,
+            tauri_collect_media_files,
             tauri_convert_media,
             tauri_cancel_conversion,
             tauri_open_folder,
