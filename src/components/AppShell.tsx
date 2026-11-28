@@ -51,8 +51,8 @@ export default function AppShell({ children }: AppShellProps) {
   }
 
   return (
-    <div className="min-h-screen flex bg-[#FAF9F6]">
-      {/* Left side navigation bar */}
+    <div className="min-h-screen flex flex-col md:flex-row bg-[#FAF9F6]">
+      {/* Left side navigation bar (stacks as top bar on mobile) */}
       <Sidebar
         isCollapsed={isCollapsed}
         onToggleCollapse={handleToggleCollapse}
@@ -60,7 +60,7 @@ export default function AppShell({ children }: AppShellProps) {
 
       {/* Main Content Area */}
       <div
-        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ease-in-out ${
+        className={`flex-1 flex flex-col w-full min-w-0 transition-all duration-300 ease-in-out ${
           isCollapsed ? "md:pl-[72px]" : "md:pl-64"
         }`}
       >
